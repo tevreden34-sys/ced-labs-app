@@ -159,15 +159,18 @@
     if(tradeHistory.length>40) tradeHistory = tradeHistory.slice(0,40);
     const tb = $('tradeBook'); if(!tb) return;
     tb.innerHTML = tradeHistory.map(r=>{
-      const pnlText = (r.type==='OPEN' && r.pnl===0) ? '-' : `${r.pnl>=0?'+':''}${fmt(r.pnl)}`;
-      const pnlCls = r.pnl>=0 ? 'up' : 'down';
-      const sign = r.side === 'SHORT' ? -1 : 1;
-      const signedQty = r.qty ? (sign * r.qty) : 0;
-      const signedUsd = r.usdSize ? (sign * r.usdSize) : 0;
-      const qtyText = r.qty ? `${signedQty>=0?'+':''}${signedQty.toFixed(4)}` : '-';
-      const usdText = r.usdSize ? `${signedUsd>=0?'+':''}${fmt(Math.abs(signedUsd))}` : '-';
+      const currentPx = state.priceBySym[r.symbol] || r.price || 0;
+      const isOpen = r.type === 'OPEN';
+      const rowPnl = isOpen
+        ? ((r.side==='LONG' ? (currentPx - r.price) : (r.price - currentPx)) * (r.qty || 0))
+        : (r.pnl || 0);
+      const pnlText = (r.type==='OPEN' && !currentPx) ? '-' : fmt(rowPnl);
+      const pnlCls = rowPnl>=0 ? 'up' : 'down';
+      const qtyText = r.qty ? `${r.qty.toFixed(4)}` : '-';
+      const usdNow = isOpen ? ((r.qty||0) * currentPx) : (r.usdSize || 0);
+      const usdText = usdNow ? fmt(usdNow) : '-';
       const sideCls = r.side === 'LONG' ? 'up' : (r.side === 'SHORT' ? 'down' : '');
-      return `<tr><td>${r.t}</td><td>${r.type}</td><td>${r.symbol}</td><td class="${sideCls}">${r.side}</td><td>${r.lev?`${r.lev}x`:'-'}</td><td>${r.price? r.price.toFixed(2):'-'}</td><td class="${sideCls}">${qtyText}</td><td class="${sideCls}">${usdText}</td><td class="${pnlCls}">${pnlText}</td></tr>`;
+      return `<tr><td>${r.t}</td><td>${r.type}</td><td>${r.symbol}</td><td class="${sideCls}">${r.side}</td><td>${r.lev?`${r.lev}x`:'-'}</td><td>${r.price? r.price.toFixed(2):'-'}</td><td class="${pnlCls}">${qtyText}</td><td class="${pnlCls}">${usdText}</td><td class="${pnlCls}">${pnlText}</td></tr>`;
     }).join('');
     const notes = $('tradeNotes');
     if(notes){
