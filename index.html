@@ -47,7 +47,7 @@
 <body>
   <main class="wrap">
     <h1>Cedric Trade Hub</h1>
-    <p class="sub">Paper bot · 10,000 USDT start · leverage up to 50x · TP1 at 1.5R (85% close) · SL at -1R then breakeven</p>
+    <p class="sub">Paper bot · 10,000 USDT start · leverage up to 70x · TP1 at 1.5R (85% close) · SL at -1R then breakeven</p>
 
     <div class="kpis">
       <div class="kpi"><div class="l">Symbol</div><div class="v" id="sym">BTCUSDT</div></div>
@@ -89,7 +89,7 @@
           <div class="controls" style="margin-bottom:10px">
             <select id="symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option></select>
             <label class="tiny">Auto TF: <span id="tfVal">-</span></label>
-            <label class="tiny">Auto Lev: <span id="levVal">-</span></label>
+            <label class="tiny">Auto Lev (5-70x): <span id="levVal">-</span></label>
             <button id="start">Start 30m</button>
             <button id="stop">Stop</button>
             <button id="panic" class="danger">Panic Sell</button>
@@ -183,7 +183,10 @@
     let lev=10;
     if(volPct<0.6&&trendStrength>0.18) lev=35; else if(volPct<1.0&&trendStrength>0.12) lev=25; else if(volPct<1.8) lev=15; else lev=8;
     if(rv>75||rv<25) lev=Math.max(5,Math.floor(lev*0.7));
-    return Math.max(5,Math.min(50,Math.round(lev)));
+    // allow higher leverage on strongest setups
+    if(volPct < 0.45 && trendStrength > 0.28 && Math.abs(rv-50) > 12) lev = Math.max(lev, 55);
+    if(volPct < 0.30 && trendStrength > 0.40 && Math.abs(rv-50) > 18) lev = Math.max(lev, 70);
+    return Math.max(5,Math.min(70,Math.round(lev)));
   }
 
   function chooseAllocationPct(close, rv, e20, e50){
