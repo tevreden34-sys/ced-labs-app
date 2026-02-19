@@ -273,9 +273,9 @@
       $('pnl').className = 'v '+(pnl>=0?'up':'down');
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
     }catch{
-      log('Data issue -> retrying in 2s');
+      log('Data issue -> retrying in 1s');
     }
-    tickTimer = setTimeout(tick, 2000);
+    tickTimer = setTimeout(tick, 1000);
   }
 
   function startBot(){
