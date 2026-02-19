@@ -40,7 +40,7 @@
     .closedRow td.keepPnl.up{color:#19c37d !important}
     .closedRow td.keepPnl.down{color:#ff5d7a !important}
     .tradeTable thead th{position:sticky;top:0;background:#0f172b;z-index:1}
-    .tradeTable th:nth-child(1){width:46px}.tradeTable th:nth-child(2){width:84px}.tradeTable th:nth-child(3){width:62px}.tradeTable th:nth-child(4){width:88px}.tradeTable th:nth-child(5){width:62px}.tradeTable th:nth-child(6){width:88px}.tradeTable th:nth-child(7){width:56px}.tradeTable th:nth-child(8){width:88px}.tradeTable th:nth-child(9){width:84px}.tradeTable th:nth-child(10){width:104px}.tradeTable th:nth-child(11){width:auto}
+    .tradeTable th:nth-child(1){width:46px}.tradeTable th:nth-child(2){width:84px}.tradeTable th:nth-child(3){width:62px}.tradeTable th:nth-child(4){width:88px}.tradeTable th:nth-child(5){width:62px}.tradeTable th:nth-child(6){width:88px}.tradeTable th:nth-child(7){width:56px}.tradeTable th:nth-child(8){width:88px}.tradeTable th:nth-child(9){width:84px}.tradeTable th:nth-child(10){width:104px}.tradeTable th:nth-child(11){width:90px}
     .hlcrop{width:100%;height:560px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative;margin-bottom:10px}
     .hlframe{width:100%;height:920px;border:0;transform:translateY(0);pointer-events:auto}
         @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
@@ -97,8 +97,8 @@
           <div class="tradeWrap" style="margin-top:12px">
             <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Trade Book</h4>
             <div class="tradeScroller"><table class="tradeTable">
-              <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>PnL</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th></tr></thead>
-              <tbody id="tradeBook"><tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
+              <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>PnL</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>uPnL</th></tr></thead>
+              <tbody id="tradeBook"><tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
             </table></div>
           <div class="tiny" style="margin:8px 0 4px">Trade Notes (Reason Only)</div>
           <div class="tradeScroller" style="max-height:180px"><table class="tradeTable">
@@ -165,7 +165,7 @@
 function renderTradeBook(){
     const tb = $('tradeBook'); if(!tb) return;
     if(!tradeHistory.length){
-      tb.innerHTML = '<tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
       const notesBody = $('tradeNotesBody'); if(notesBody) notesBody.innerHTML = '<tr><td colspan="2" class="tiny">No trade notes yet.</td></tr>'; 
       return;
     }
@@ -173,22 +173,25 @@ function renderTradeBook(){
     const rows = tradeHistory.map((r, i)=>{
       const currentPx = state.priceBySym[r.symbol] || r.price || 0;
       const isOpen = r.status !== 'CLOSED' && r.type === 'OPEN';
-      const rowPnl = isOpen
+      const unrealized = isOpen
         ? ((r.side==='LONG' ? (currentPx - r.price) : (r.price - currentPx)) * (r.qty || 0))
-        : (r.pnl || 0);
-      const pnlText = (r.type==='OPEN' && !currentPx) ? '-' : fmt(rowPnl);
-      const pnlCls = rowPnl>=0 ? 'up' : 'down';
+        : 0;
+      const finalPnl = isOpen ? null : (r.pnl || 0);
+      const pnlText = finalPnl === null ? '-' : fmt(finalPnl);
+      const pnlCls = (finalPnl ?? unrealized) >= 0 ? 'up' : 'down';
+      const upnlText = isOpen ? fmt(unrealized) : '-';
+      const upnlCls = unrealized >= 0 ? 'up' : 'down';
       const qtyText = r.qty ? `${r.qty.toFixed(4)}` : '-';
       const usdNow = isOpen ? ((r.qty||0) * currentPx) : (r.usdSize || 0);
       const usdText = usdNow ? fmt(usdNow) : '-';
       const sideCls = r.side === 'LONG' ? 'up' : (r.side === 'SHORT' ? 'down' : '');
-      return {i, r, pnlCls, pnlText, qtyText, usdText, sideCls};
+      return {i, r, pnlCls, pnlText, qtyText, usdText, sideCls, upnlText, upnlCls};
     });
 
     tb.innerHTML = rows.map(x=>{
       const rowCls = x.r.status==='CLOSED' ? 'closedRow' : '';
       const pxCell = (x.r.status==='CLOSED' && x.r.closePrice) ? x.r.closePrice.toFixed(2) : (x.r.price ? x.r.price.toFixed(2) : '-');
-      return `<tr class="${rowCls}"><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td class="${x.pnlCls} keepPnl">${x.pnlText}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${pxCell}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td></tr>`;
+      return `<tr class="${rowCls}"><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td class="${x.pnlCls} keepPnl">${x.pnlText}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${pxCell}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.upnlCls}">${x.upnlText}</td></tr>`;
     }).join('');
 
     const notesBody = $('tradeNotesBody');
@@ -547,7 +550,7 @@ function renderTradeBook(){
       priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
       chartTf: '5m'
     };
-    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('tradeNotesBody')) $('tradeNotesBody').innerHTML='<tr><td colspan="2" class="tiny">No trade notes yet.</td></tr>';
+    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('tradeNotesBody')) $('tradeNotesBody').innerHTML='<tr><td colspan="2" class="tiny">No trade notes yet.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('upnl').textContent='$0.00'; $('marginUsed').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
     renderBalance(state.balance); updateFocusKpis();
