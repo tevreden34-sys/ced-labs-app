@@ -40,7 +40,7 @@
     .closedRow td.keepPnl.up{color:#19c37d !important}
     .closedRow td.keepPnl.down{color:#ff5d7a !important}
     .tradeTable thead th{position:sticky;top:0;background:#0f172b;z-index:1}
-    .tradeTable th:nth-child(1){width:46px}.tradeTable th:nth-child(2){width:84px}.tradeTable th:nth-child(3){width:62px}.tradeTable th:nth-child(4){width:88px}.tradeTable th:nth-child(5){width:62px}.tradeTable th:nth-child(6){width:56px}.tradeTable th:nth-child(7){width:88px}.tradeTable th:nth-child(8){width:84px}.tradeTable th:nth-child(9){width:104px}.tradeTable th:nth-child(10){width:84px}.tradeTable th:nth-child(11){width:auto}
+    .tradeTable th:nth-child(1){width:46px}.tradeTable th:nth-child(2){width:84px}.tradeTable th:nth-child(3){width:62px}.tradeTable th:nth-child(4){width:88px}.tradeTable th:nth-child(5){width:62px}.tradeTable th:nth-child(6){width:88px}.tradeTable th:nth-child(7){width:56px}.tradeTable th:nth-child(8){width:88px}.tradeTable th:nth-child(9){width:84px}.tradeTable th:nth-child(10){width:104px}.tradeTable th:nth-child(11){width:auto}
     .hlcrop{width:100%;height:560px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative;margin-bottom:10px}
     .hlframe{width:100%;height:920px;border:0;transform:translateY(0);pointer-events:auto}
         @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
@@ -97,7 +97,7 @@
           <div class="tradeWrap" style="margin-top:12px">
             <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Trade Book</h4>
             <div class="tradeScroller"><table class="tradeTable">
-              <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>PnL</th></tr></thead>
+              <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>PnL</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th></tr></thead>
               <tbody id="tradeBook"><tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
             </table></div>
           <div class="tiny" style="margin:8px 0 4px">Trade Notes (Reason Only)</div>
@@ -188,7 +188,7 @@ function renderTradeBook(){
     tb.innerHTML = rows.map(x=>{
       const rowCls = x.r.status==='CLOSED' ? 'closedRow' : '';
       const pxCell = (x.r.status==='CLOSED' && x.r.closePrice) ? x.r.closePrice.toFixed(2) : (x.r.price ? x.r.price.toFixed(2) : '-');
-      return `<tr class="${rowCls}"><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${pxCell}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.pnlCls} keepPnl">${x.pnlText}</td></tr>`;
+      return `<tr class="${rowCls}"><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td class="${x.pnlCls} keepPnl">${x.pnlText}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${pxCell}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td></tr>`;
     }).join('');
 
     const notesBody = $('tradeNotesBody');
