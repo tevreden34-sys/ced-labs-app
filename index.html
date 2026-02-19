@@ -45,7 +45,7 @@
 <body>
   <main class="wrap">
     <h1>Cedric Trade Hub</h1>
-    <p class="sub">Paper bot · 10,000 USDT start · leverage up to 50x · TP1 at 2.5R (70% close) · SL at -1R then breakeven</p>
+    <p class="sub">Paper bot · 10,000 USDT start · leverage up to 50x · TP1 at 1.5R (85% close) · SL at -1R then breakeven</p>
 
     <div class="kpis">
       <div class="kpi"><div class="l">Symbol</div><div class="v" id="sym">BTCUSDT</div></div>
@@ -88,12 +88,12 @@
             <select id="symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option></select>
             <select id="interval"><option value="1m">1m</option><option value="5m" selected>5m</option><option value="15m">15m</option></select>
             <label class="tiny">Auto Lev: <span id="levVal">-</span></label>
-            <button id="start">Start 15m</button>
+            <button id="start">Start 30m</button>
             <button id="stop">Stop</button>
             <button id="panic" class="danger">Panic Sell</button>
             <button id="reset">Reset</button>
           </div>
-          <div class="tiny" style="margin-bottom:8px">Logs include entry reason, -1R SL, TP1 at +2.5R (70% close), then SL moved to breakeven.</div>
+          <div class="tiny" style="margin-bottom:8px">Logs include entry reason, -1R SL, TP1 at +1.5R (85% close), then SL moved to breakeven.</div>
           <div class="log" id="log"></div>
           <div class="tiny" style="margin:10px 0 6px">Hyperliquid Chart</div>
           <div class="hlcrop"><iframe id="hlChart" class="hlframe" src="https://app.hyperliquid.xyz/trade/BTC" loading="lazy" referrerpolicy="no-referrer"></iframe></div>
@@ -105,10 +105,10 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const RUN_MS = 15 * 60 * 1000;
+  const RUN_MS = 30 * 60 * 1000;
   const RISK_PCT = 0.01;
-  const TP1_R = 2.5;
-  const TP1_CLOSE = 0.70;
+  const TP1_R = 1.5;
+  const TP1_CLOSE = 0.85;
 
   let running = false;
   let startAt = 0;
@@ -181,12 +181,12 @@
   }
 
   function updateTimeLeft(){
-    if(!running) { $('timeLeft').textContent = '15:00'; return; }
+    if(!running) { $('timeLeft').textContent = '30:00'; return; }
     const left = Math.max(0, RUN_MS - (Date.now() - startAt));
     const m = Math.floor(left/60000).toString().padStart(2,'0');
     const s = Math.floor((left%60000)/1000).toString().padStart(2,'0');
     $('timeLeft').textContent = `${m}:${s}`;
-    if(left <= 0) stopBot('15m run completed');
+    if(left <= 0) stopBot('30m run completed');
   }
 
   function calcEquity(px){
@@ -236,7 +236,7 @@
     state.sl = state.entry;
     renderBalance();
     log(`TP1 HIT @ ${px.toFixed(2)} | closed 70% (${closeQty.toFixed(4)}) | realized ${pnl>=0?'+':''}${fmt(pnl)} | moved SL to breakeven @ ${state.sl.toFixed(2)}`);
-    addTrade('TP1', state.side, px, closeQty, pnl, 'Take 70% at 2.5R');
+    addTrade('TP1', state.side, px, closeQty, pnl, 'Take 85% at 1.5R');
   }
 
   function managePosition(px){
@@ -315,7 +315,7 @@
     clearInterval(countdownTimer);
     countdownTimer = setInterval(updateTimeLeft, 1000);
     updateTimeLeft();
-    log(`Run started for 15 minutes | initial balance ${fmt(state.balance)} | leverage mode: AUTO (5x-50x)`);
+    log(`Run started for 30 minutes | initial balance ${fmt(state.balance)} | leverage mode: AUTO (5x-50x)`);
     tick();
   }
 
@@ -348,7 +348,7 @@
   $('interval').onchange = ()=> log('Interval -> '+$('interval').value);
   renderBalance();
   $('levVal').textContent = state.autoLev + 'x';
-  log('Paper mode active. TP logic: +2.5R take 70%, then SL moved to breakeven.');
+  log('Paper mode active. Aggressive-safe TP logic: +1.5R take 85%, then SL moved to breakeven.');
 })();
 </script>
 </body>
