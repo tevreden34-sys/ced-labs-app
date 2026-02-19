@@ -52,7 +52,9 @@
       <article class="card">
         <div class="head"><b>Performance + Order Book</b><span id="updated" class="sub" style="margin:0">syncing...</span></div>
         <div class="body">
-          <canvas id="equityChart" height="110"></canvas>
+          <canvas id="equityChart" height="95"></canvas>
+          <div class="tiny" style="margin:8px 0 6px">Live Pair Chart</div>
+          <canvas id="priceChart" height="90"></canvas>
           <div class="split" style="margin-top:12px">
             <div class="bookCol">
               <h4>Asks</h4>
@@ -100,11 +102,19 @@
   let countdownTimer = null;
 
   let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false };
+  let priceSeries = [];
+  let priceLabels = [];
 
   const chart = new Chart($('equityChart').getContext('2d'), {
     type: 'line',
     data: { labels: state.labels, datasets: [{ label: 'Equity', data: state.equity, borderColor: '#5aa8ff', backgroundColor: 'rgba(90,168,255,.15)', fill: true, tension: .25, pointRadius: 0 }]},
     options: { responsive: true, plugins: { legend: { display:false }}, scales: { x: { display:false }, y: { ticks: { color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
+  });
+
+  const priceChart = new Chart($('priceChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: priceLabels, datasets: [{ label:'Price', data: priceSeries, borderColor:'#19c37d', backgroundColor:'rgba(25,195,125,.12)', fill:true, tension:.18, pointRadius:0 }]},
+    options: { responsive:true, plugins:{ legend:{ display:false }}, scales:{ x:{ display:false }, y:{ ticks:{ color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
   });
 
   function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -213,6 +223,12 @@
       const pt = await pRes.json();
       const close = kl.map(c=>Number(c[4]));
       const px = Number(pt.price);
+      priceSeries.push(px);
+      priceLabels.push(new Date().toLocaleTimeString());
+      if(priceSeries.length>220){ priceSeries.shift(); priceLabels.shift(); }
+      priceChart.data.labels = priceLabels;
+      priceChart.data.datasets[0].data = priceSeries;
+      priceChart.update('none');
       const e20 = ema(close.slice(-80),20);
       const e50 = ema(close.slice(-120),50);
       const rv = rsi(close,14);
@@ -286,6 +302,7 @@
     stopBot('reset');
     state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false };
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
+    priceSeries=[]; priceLabels=[]; priceChart.data.labels=priceLabels; priceChart.data.datasets[0].data=priceSeries; priceChart.update();
     $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-'; renderBalance();
     log('State reset to initial 10,000 USDT balance.');
   };
