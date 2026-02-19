@@ -168,7 +168,7 @@
     }
   }
 
-  function renderBalance(){ $('balance').textContent = fmt(state.balance); }
+  function renderBalance(v){ $('balance').textContent = fmt(v ?? state.balance); }
 
   function renderOrderBook(book){
     const asks = (book.asks || []).slice(0,5);
@@ -271,7 +271,7 @@
     if(!p) return;
     const pnl = p.side==='LONG' ? (px-p.entry)*p.qty : (p.entry-px)*p.qty;
     state.balance += pnl;
-    renderBalance();
+    renderBalance(state.balance);
     const closeNotional = p.qty * px;
     log(`CLOSE ${p.side} ${sym} @ ${px.toFixed(2)} | closed ${p.qty.toFixed(4)} ${sym.replace('USDT','')} (${fmt(closeNotional)}) | pnl ${pnl>=0?'+':''}${fmt(pnl)} | new balance ${fmt(state.balance)} | ${reason}`);
     addTrade('CLOSE', sym, p.side, px, p.qty, pnl, reason);
@@ -287,7 +287,7 @@
     p.qty -= closeQty;
     p.tp1Hit = true;
     p.sl = p.entry;
-    renderBalance();
+    renderBalance(state.balance);
     const partialNotional = closeQty * px;
     log(`TP1 HIT ${sym} @ ${px.toFixed(2)} | closed 85% (${closeQty.toFixed(4)} ${sym.replace('USDT','')} / ${fmt(partialNotional)}) | realized ${pnl>=0?'+':''}${fmt(pnl)} | SL -> BE`);
     addTrade('TP1', sym, p.side, px, closeQty, pnl, 'Take 85% at 1.5R');
@@ -386,6 +386,7 @@
       fetchOrderBook($('symbol').value);
 
       const eq = calcEquity();
+      renderBalance(eq);
       state.equity.push(eq); state.labels.push(new Date().toLocaleTimeString());
       if(state.equity.length>220){ state.equity.shift(); state.labels.shift(); }
       chart.data.labels = state.labels;
@@ -454,13 +455,13 @@
     tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="8" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('pnl').textContent='$0.00'; $('upnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
-    renderBalance(); updateFocusKpis();
+    renderBalance(state.balance); updateFocusKpis();
     log('State reset to initial 10,000 USDT balance.');
   };
 
   $('symbol').onchange = ()=>{ updateFocusKpis(); refreshFocusedMarketView(); };
 
-  renderBalance();
+  renderBalance(state.balance);
   $('tfVal').textContent = '5m';
   $('levVal').textContent = '10x';
   refreshFocusedMarketView();
