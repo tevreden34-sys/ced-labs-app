@@ -72,8 +72,7 @@
           <div class="controls" style="margin-bottom:10px">
             <select id="symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option></select>
             <select id="interval"><option value="1m">1m</option><option value="5m" selected>5m</option><option value="15m">15m</option></select>
-            <label class="tiny">Lev: <span id="levVal">10x</span></label>
-            <input id="lev" type="range" min="1" max="50" value="10" />
+            <label class="tiny">Auto Lev: <span id="levVal">-</span></label>
             <button id="start">Start 15m</button>
             <button id="stop">Stop</button>
             <button id="panic" class="danger">Panic Sell</button>
@@ -101,7 +100,7 @@
   let tickTimer = null;
   let countdownTimer = null;
 
-  let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false };
+  let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10 };
   let priceSeries = [];
   let priceLabels = [];
 
@@ -121,6 +120,23 @@
   function log(msg){ $('log').innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + $('log').innerHTML; }
   function ema(arr, p){ const k=2/(p+1); let v=arr[0]; for(let i=1;i<arr.length;i++) v=arr[i]*k+v*(1-k); return v; }
   function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
+
+  function chooseLeverage(close, rv, e20, e50){
+    const tail = close.slice(-30);
+    const hi = Math.max(...tail), lo = Math.min(...tail);
+    const volPct = ((hi - lo) / Math.max(1e-9, lo)) * 100;
+    const trendStrength = Math.abs((e20 - e50) / Math.max(1e-9, e50)) * 100;
+
+    let lev = 10;
+    if(volPct < 0.6 && trendStrength > 0.18) lev = 35;
+    else if(volPct < 1.0 && trendStrength > 0.12) lev = 25;
+    else if(volPct < 1.8) lev = 15;
+    else lev = 8;
+
+    if(rv > 75 || rv < 25) lev = Math.max(5, Math.floor(lev * 0.7));
+    lev = Math.max(5, Math.min(50, Math.round(lev)));
+    return lev;
+  }
 
   function renderBalance(){ $('balance').textContent = fmt(state.balance); }
 
@@ -157,12 +173,12 @@
     return state.balance + pnl;
   }
 
-  function openPosition(side, px, reason){
-    const lev = Number($('lev').value);
+  function openPosition(side, px, reason, lev){
     const margin = state.balance * 0.10;
     const notional = margin * lev;
     const qty = notional / px;
 
+    state.autoLev = lev;
     state.marginUsed = margin;
     state.qty = qty;
     state.entry = px;
@@ -238,14 +254,17 @@
       let sig='HOLD';
       if(e20>e50 && rv>53) sig='BUY';
       if(e20<e50 && rv<47) sig='SELL';
-      const reason = `EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}`;
+      const autoLev = chooseLeverage(close, rv, e20, e50);
+      state.autoLev = autoLev;
+      $('levVal').textContent = autoLev + "x";
+      const reason = `EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}, autoLev ${autoLev}x`;
 
       if(sig==='BUY'){
         if(state.side==='SHORT') closePosition(px, `trend flip bullish | ${reason}`);
-        if(!state.side) openPosition('LONG', px, reason);
+        if(!state.side) openPosition('LONG', px, reason, autoLev);
       } else if(sig==='SELL'){
         if(state.side==='LONG') closePosition(px, `trend flip bearish | ${reason}`);
-        if(!state.side) openPosition('SHORT', px, reason);
+        if(!state.side) openPosition('SHORT', px, reason, autoLev);
       }
 
       const eq = calcEquity(px);
@@ -277,7 +296,7 @@
     clearInterval(countdownTimer);
     countdownTimer = setInterval(updateTimeLeft, 1000);
     updateTimeLeft();
-    log(`Run started for 15 minutes | initial balance ${fmt(state.balance)} | leverage ${$('lev').value}x`);
+    log(`Run started for 15 minutes | initial balance ${fmt(state.balance)} | leverage mode: AUTO (5x-50x)`);
     tick();
   }
 
@@ -289,7 +308,6 @@
     log(`Bot ${msg}`);
   }
 
-  $('lev').addEventListener('input', ()=> $('levVal').textContent = $('lev').value + 'x');
   $('start').onclick = startBot;
   $('stop').onclick = () => stopBot('stopped manually');
   $('panic').onclick = () => {
@@ -300,7 +318,7 @@
   };
   $('reset').onclick = () => {
     stopBot('reset');
-    state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false };
+    state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10 };
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     priceSeries=[]; priceLabels=[]; priceChart.data.labels=priceLabels; priceChart.data.datasets[0].data=priceSeries; priceChart.update();
     $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-'; renderBalance();
@@ -310,6 +328,7 @@
   $('symbol').onchange = ()=> log('Symbol -> '+$('symbol').value);
   $('interval').onchange = ()=> log('Interval -> '+$('interval').value);
   renderBalance();
+  $('levVal').textContent = state.autoLev + 'x';
   log('Paper mode active. TP logic: +2.5R take 70%, then SL moved to breakeven.');
 })();
 </script>
