@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cedric Trade Hub</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{--bg:#0b1020;--card:#121a2b;--line:#273452;--text:#eaf1ff;--muted:#9fb0d6;--green:#19c37d;--red:#ff5d7a;--yellow:#ffcb66}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(1000px 500px at 20% -10%,#1a2743 0%,transparent 40%),var(--bg);color:var(--text);font-family:Inter,system-ui,Arial,sans-serif}
+    .wrap{max-width:1200px;margin:0 auto;padding:20px}
+    h1{margin:0 0 4px;font-size:30px}.sub{margin:0 0 16px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1.4fr .9fr;gap:14px}
+    .card{background:linear-gradient(180deg,var(--card),#0f1627);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+    .head{padding:12px 14px;border-bottom:1px solid #1f2b45;display:flex;justify-content:space-between;align-items:center}
+    .body{padding:12px 14px}
+    .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .kpi{background:#0f172b;border:1px solid #22314f;border-radius:12px;padding:10px}
+    .kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-weight:700;font-size:18px;margin-top:4px}
+    .up{color:var(--green)} .down{color:var(--red)} .warn{color:var(--yellow)}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    select,button{background:#111a30;color:var(--text);border:1px solid #2d3d61;border-radius:10px;padding:8px 10px}
+    button{cursor:pointer}
+    .log{max-height:250px;overflow:auto;font-size:12px;color:#c9d7f4;background:#0b1326;border:1px solid #1f2f50;border-radius:10px;padding:8px}
+    .row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed #20304f}.row:last-child{border-bottom:0}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Cedric Trade Hub</h1>
+    <p class="sub">Chosen bot stack: <b>Freqtrade-style EMA/RSI paper trader</b> (safe mode) · live Binance candles + performance graph</p>
+
+    <div class="kpis">
+      <div class="kpi"><div class="l">Symbol</div><div class="v" id="sym">BTCUSDT</div></div>
+      <div class="kpi"><div class="l">Price</div><div class="v" id="price">-</div></div>
+      <div class="kpi"><div class="l">Signal</div><div class="v" id="signal">-</div></div>
+      <div class="kpi"><div class="l">Paper PnL</div><div class="v" id="pnl">$0.00</div></div>
+    </div>
+
+    <section class="grid">
+      <article class="card">
+        <div class="head"><b>Performance Graph (Paper Equity)</b><span id="updated" class="sub" style="margin:0">syncing...</span></div>
+        <div class="body"><canvas id="equityChart" height="120"></canvas></div>
+      </article>
+
+      <article class="card">
+        <div class="head"><b>Bot Control</b></div>
+        <div class="body">
+          <div class="controls" style="margin-bottom:10px">
+            <select id="symbol">
+              <option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option>
+            </select>
+            <select id="interval"><option value="1m">1m</option><option value="5m" selected>5m</option><option value="15m">15m</option></select>
+            <button id="start">Start</button>
+            <button id="stop">Stop</button>
+            <button id="reset">Reset</button>
+          </div>
+          <div class="log" id="log"></div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let running = true;
+  let state = { cash: 10000, qty: 0, entry: 0, trades: 0, equity: [10000], labels: ['start'] };
+  let timer = null;
+
+  const chart = new Chart($('equityChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: state.labels, datasets: [{ label: 'Equity', data: state.equity, borderColor: '#5aa8ff', backgroundColor: 'rgba(90,168,255,.15)', fill: true, tension: .25, pointRadius: 0 }]},
+    options: { responsive: true, plugins: { legend: { display:false }}, scales: { x: { display:false }, y: { ticks: { color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
+  });
+
+  function log(msg){ const t=new Date().toLocaleTimeString(); $('log').innerHTML = `[${t}] ${msg}<br>` + $('log').innerHTML; }
+  function ema(arr, p){ const k=2/(p+1); let v=arr[0]; for(let i=1;i<arr.length;i++) v=arr[i]*k+v*(1-k); return v; }
+  function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
+  function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+  async function tick(){
+    if(!running) return;
+    const sym=$('symbol').value, intv=$('interval').value;
+    try{
+      const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${intv}&limit=120`, {cache:'no-store'});
+      if(!r.ok) throw new Error('market fetch failed');
+      const kl = await r.json();
+      const close = kl.map(c=>Number(c[4]));
+      const px = close[close.length-1];
+      const e20=ema(close.slice(-60),20), e50=ema(close.slice(-80),50), rv=rsi(close,14);
+      let sig='HOLD';
+      if(e20>e50 && rv>52) sig='BUY';
+      if(e20<e50 && rv<48) sig='SELL';
+
+      if(sig==='BUY' && state.qty===0){ state.qty = state.cash/px; state.entry=px; state.cash=0; state.trades++; log(`BUY ${sym} @ ${px.toFixed(2)} | RSI ${rv.toFixed(1)}`); }
+      if(sig==='SELL' && state.qty>0){ state.cash = state.qty*px; state.qty=0; state.entry=0; state.trades++; log(`SELL ${sym} @ ${px.toFixed(2)} | RSI ${rv.toFixed(1)}`); }
+
+      const eq = state.cash + state.qty*px;
+      state.equity.push(eq); state.labels.push(new Date().toLocaleTimeString());
+      if(state.equity.length>120){ state.equity.shift(); state.labels.shift(); }
+
+      chart.data.labels = state.labels;
+      chart.data.datasets[0].data = state.equity;
+      chart.update('none');
+
+      $('sym').textContent=sym;
+      $('price').textContent=fmt(px);
+      $('signal').textContent=sig;
+      $('signal').className='v '+(sig==='BUY'?'up':sig==='SELL'?'down':'warn');
+      const pnl = eq-10000;
+      $('pnl').textContent=(pnl>=0?'+':'')+fmt(pnl);
+      $('pnl').className='v '+(pnl>=0?'up':'down');
+      $('updated').textContent='last tick: '+new Date().toLocaleTimeString();
+    }catch(e){
+      log('Data issue -> retrying in 2s');
+    }
+    timer=setTimeout(tick,2000);
+  }
+
+  $('start').onclick=()=>{ if(!running){ running=true; log('Bot started'); tick(); }};
+  $('stop').onclick=()=>{ running=false; clearTimeout(timer); log('Bot stopped'); };
+  $('reset').onclick=()=>{ state={cash:10000,qty:0,entry:0,trades:0,equity:[10000],labels:['start']}; chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update(); log('State reset'); };
+  $('symbol').onchange=()=>log('Symbol -> '+$('symbol').value);
+  $('interval').onchange=()=>log('Interval -> '+$('interval').value);
+
+  log('Paper mode active (no real orders).');
+  tick();
+})();
+</script>
+</body>
+</html>
