@@ -10,8 +10,7 @@
     .wrap{max-width:1200px;margin:0 auto;padding:22px}.header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
     h1{font-size:30px;margin:0}.sub{margin:4px 0 0;color:var(--muted);font-size:14px}.statusbar{display:flex;gap:8px;flex-wrap:wrap}
     .chip{background:var(--panel2);border:1px solid var(--line);padding:8px 10px;border-radius:999px;font-size:12px;color:var(--muted)}
-    .chip.clickable{cursor:pointer;transition:.2s}.chip.clickable:hover{transform:translateY(-1px);border-color:#3b5a82;color:#d6e6ff}
-    .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:14px}
+        .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:14px}
     .card-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.card-title{font-weight:700}
     .card-body{padding:10px 14px 14px}
     table{width:100%;border-collapse:collapse}th,td{padding:11px 10px;border-bottom:1px solid #1c293a;font-size:14px}th{font-size:12px;text-transform:uppercase;color:#9eb2cf;text-align:left}
@@ -33,13 +32,12 @@
       <div><h1>Control Hub</h1><p class="sub">Crypto intelligence dashboard · live market + Solana narrative pulse</p></div>
       <div class="statusbar">
         <div class="chip" id="cgStatus">CoinGecko: connecting…</div>
-        <div class="chip clickable" id="nextTick" title="Click to refresh now">Next refresh: 10s</div>
-        <div class="chip" id="lastSync">Last sync: --:--:--</div>
+                <div class="chip" id="lastSync">Last sync: --:--:--</div>
       </div>
     </section>
 
     <article class="card">
-      <div class="card-head"><div class="card-title">Top 10 Crypto Market</div><div class="sub" style="margin:0">Auto refresh target: 10s</div></div>
+      <div class="card-head"><div class="card-title">Top 10 Crypto Market</div><div class="sub" style="margin:0">Auto refresh: 2s</div></div>
       <div class="card-body"><div id="tableWrap" class="loading">Loading top 10 assets…</div></div>
     </article>
 
@@ -50,9 +48,9 @@
   </main>
 
   <script>
-    const tableWrap=document.getElementById('tableWrap'),cgStatus=document.getElementById('cgStatus'),nextTick=document.getElementById('nextTick'),lastSync=document.getElementById('lastSync');
+    const tableWrap=document.getElementById('tableWrap'),cgStatus=document.getElementById('cgStatus'),lastSync=document.getElementById('lastSync');
     const narrativesEl=document.getElementById('narratives'),narrativeTick=document.getElementById('narrativeTick');
-    const BASE_MS=10000,MAX_MS=60000; let refreshMs=BASE_MS,countdown=10,pollTimer;
+    const BASE_MS=2000,MAX_MS=60000; let refreshMs=BASE_MS,pollTimer;
     const endpoint='https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1&sparkline=false&price_change_percentage=24h';
 
     const fallback=[
@@ -81,9 +79,9 @@
       const d=await r.json(); if(!Array.isArray(d)) throw new Error('BAD_PAYLOAD'); return d;
     }
 
-    function setNext(){ if(pollTimer)clearTimeout(pollTimer); countdown=Math.max(1,Math.ceil(refreshMs/1000)); nextTick.textContent=`Next refresh: ${countdown}s`; pollTimer=setTimeout(runCycle,refreshMs); }
+    function setNext(){ if(pollTimer)clearTimeout(pollTimer); pollTimer=setTimeout(runCycle,refreshMs); }
 
-    async function runCycle(force=false){
+    async function runCycle(){
       try{
         const data=await fetchTop10();
         renderTable(data);
@@ -93,14 +91,12 @@
         const fake=synthUpdate();
         renderTable(fake);
         cgStatus.textContent='CoinGecko: fallback live (API limited)';
-        refreshMs=Math.min(force?BASE_MS:refreshMs*2,MAX_MS);
+        refreshMs=Math.min(refreshMs*2,MAX_MS);
       }
       lastSync.textContent='Last sync: '+new Date().toLocaleTimeString();
       setNext();
     }
 
-    nextTick.addEventListener('click',()=>{nextTick.textContent='Refreshing now…'; if(pollTimer)clearTimeout(pollTimer); runCycle(true);});
-    setInterval(()=>{if(countdown>0)countdown--; nextTick.textContent=`Next refresh: ${countdown}s`;},1000);
 
     const pool=[
       {title:'AI Coins',desc:'AI momentum rotates back into high-beta Solana names on increased social + volume velocity.',tokens:['$AI16Z','$ALCH','$WAI'],sentiment:'Bullish',strength:4},
