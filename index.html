@@ -162,7 +162,13 @@
     tb.innerHTML = tradeHistory.map(r=>{
       const pnlText = (r.type==='OPEN' && r.pnl===0) ? '-' : `${r.pnl>=0?'+':''}${fmt(r.pnl)}`;
       const pnlCls = r.pnl>=0 ? 'up' : 'down';
-      return `<tr><td>${r.t}</td><td>${r.type}</td><td>${r.symbol}</td><td>${r.side}</td><td>${r.lev?`${r.lev}x`:'-'}</td><td>${r.price? r.price.toFixed(2):'-'}</td><td>${r.qty? r.qty.toFixed(4):'-'}</td><td>${r.usdSize?fmt(r.usdSize):'-'}</td><td class="${pnlCls}">${pnlText}</td></tr>`;
+      const sign = r.side === 'SHORT' ? -1 : 1;
+      const signedQty = r.qty ? (sign * r.qty) : 0;
+      const signedUsd = r.usdSize ? (sign * r.usdSize) : 0;
+      const qtyText = r.qty ? `${signedQty>=0?'+':''}${signedQty.toFixed(4)}` : '-';
+      const usdText = r.usdSize ? `${signedUsd>=0?'+':''}${fmt(Math.abs(signedUsd))}` : '-';
+      const sideCls = r.side === 'LONG' ? 'up' : (r.side === 'SHORT' ? 'down' : '');
+      return `<tr><td>${r.t}</td><td>${r.type}</td><td>${r.symbol}</td><td class="${sideCls}">${r.side}</td><td>${r.lev?`${r.lev}x`:'-'}</td><td>${r.price? r.price.toFixed(2):'-'}</td><td class="${sideCls}">${qtyText}</td><td class="${sideCls}">${usdText}</td><td class="${pnlCls}">${pnlText}</td></tr>`;
     }).join('');
     const notes = $('tradeNotes');
     if(notes){
