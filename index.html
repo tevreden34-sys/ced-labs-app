@@ -142,22 +142,13 @@
   function ema(arr, p){ const k=2/(p+1); let v=arr[0]; for(let i=1;i<arr.length;i++) v=arr[i]*k+v*(1-k); return v; }
   function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
 
-  function addTrade(type, symbol, side, price, qty, pnl, reason, lev){
-    const _price = Number(price||0), _qty = Number(qty||0), _pnl = Number(pnl||0);
-    tradeHistory.unshift({
-      t:new Date().toLocaleTimeString(),
-      type,
-      symbol,
-      side:side||'-',
-      price:_price,
-      qty:_qty,
-      usdSize:_price*_qty,
-      pnl:_pnl,
-      reason:reason||'-',
-      lev: Number(lev||0)
-    });
-    if(tradeHistory.length>40) tradeHistory = tradeHistory.slice(0,40);
+  function renderTradeBook(){
     const tb = $('tradeBook'); if(!tb) return;
+    if(!tradeHistory.length){
+      tb.innerHTML = '<tr><td colspan="9" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
+      const notes = $('tradeNotes'); if(notes) notes.innerHTML = 'No trade notes yet.';
+      return;
+    }
     tb.innerHTML = tradeHistory.map(r=>{
       const currentPx = state.priceBySym[r.symbol] || r.price || 0;
       const isOpen = r.type === 'OPEN';
@@ -176,6 +167,24 @@
     if(notes){
       notes.innerHTML = tradeHistory.slice(0,12).map(r=>`[${r.t}] ${r.type} ${r.symbol} ${r.side} — ${r.reason}`).join('<br>') || 'No trade notes yet.';
     }
+  }
+
+  function addTrade(type, symbol, side, price, qty, pnl, reason, lev){
+    const _price = Number(price||0), _qty = Number(qty||0), _pnl = Number(pnl||0);
+    tradeHistory.unshift({
+      t:new Date().toLocaleTimeString(),
+      type,
+      symbol,
+      side:side||'-',
+      price:_price,
+      qty:_qty,
+      usdSize:_price*_qty,
+      pnl:_pnl,
+      reason:reason||'-',
+      lev: Number(lev||0)
+    });
+    if(tradeHistory.length>40) tradeHistory = tradeHistory.slice(0,40);
+    renderTradeBook();
   }
 
   function renderBalance(v){ $('balance').textContent = fmt(v ?? state.balance); }
@@ -348,8 +357,10 @@
       renderOrderBook(book);
       updateFocusKpis();
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
+      renderTradeBook();
     }catch(e){
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
+      renderTradeBook();
       updateFocusKpis();
     }
   }
@@ -420,6 +431,7 @@
       $('marginUsed').textContent = fmt(calcMarginInUse());
       $('marginUsed').className = 'v warn';
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
+      renderTradeBook();
     }catch(e){
       // silent retry
     }
