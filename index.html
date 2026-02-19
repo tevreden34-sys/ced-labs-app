@@ -27,11 +27,7 @@
         .tiny{font-size:12px;color:var(--muted)}
     .split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .bookCol h4{margin:0 0 8px;font-size:13px;color:#b8c9ea}
-    .bookTable{width:100%;border-collapse:collapse;font-size:10px}
-    .bookTable td{padding:2px 4px;border-bottom:1px solid #1c2a45}
-    .bookTable td:last-child{text-align:right}
-    .ask td{color:#ff9bae}.bid td{color:#8effc8}
-    .tradeWrap{margin-top:10px}
+                    .tradeWrap{margin-top:10px}
     .tradeScroller{width:100%;max-height:280px;overflow:auto;border:1px solid #1c2a45;border-radius:10px}
     .tradeTable{width:100%;min-width:1240px;table-layout:fixed;border-collapse:collapse;font-size:11px}
     .tradeTable th,.tradeTable td{padding:6px 7px;border-bottom:1px solid #1c2a45;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -66,14 +62,10 @@
         <div class="head"><b>Live Coin Chart + Order Book</b><span id="updated" class="sub" style="margin:0">interactive chart enabled</span></div>
         <div class="body">
                     <div class="hlcrop"><iframe id="hlChart" class="hlframe" src="https://app.hyperliquid.xyz/trade/BTC" loading="lazy" referrerpolicy="no-referrer"></iframe></div>
-          <div class="split" style="margin-top:12px">
+          <div class="split" style="margin-top:12px;grid-template-columns:1fr">
             <div class="bookCol">
-              <h4>Asks (Top 5)</h4>
-              <table class="bookTable" id="asks"></table>
-            </div>
-            <div class="bookCol">
-              <h4>Bids (Top 5)</h4>
-              <table class="bookTable" id="bids"></table>
+              <h4>Position Bias (Long vs Short)</h4>
+              <canvas id="biasChart" height="130"></canvas>
             </div>
           </div>
 
@@ -134,13 +126,34 @@
     autoLevBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,10])),
     signalBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'HOLD'])),
     priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
-    chartTf: '5m'
+    chartTf: '5m',
+    longCount: 0,
+    shortCount: 0
   };
 
   const chart = new Chart($('equityChart').getContext('2d'), {
     type: 'line',
     data: { labels: state.labels, datasets: [{ label: 'Equity', data: state.equity, borderColor: '#5aa8ff', backgroundColor: 'rgba(90,168,255,.15)', fill: true, tension: .25, pointRadius: 0 }]},
     options: { responsive: true, plugins: { legend: { display:false }}, scales: { x: { display:false }, y: { ticks: { color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
+  });
+
+  const biasChart = new Chart($('biasChart').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Longs', 'Shorts'],
+      datasets: [{
+        data: [0, 0],
+        backgroundColor: ['#19c37d', '#ff5d7a'],
+        borderColor: ['#19c37d', '#ff5d7a'],
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#9fb0d6' } }
+      }
+    }
   });
 
   function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -255,22 +268,6 @@ function renderTradeBook(){
 
 
   function renderBalance(v){ $('balance').textContent = fmt(v ?? state.balance); }
-
-  function renderOrderBook(book){
-    const asks = (book.asks || []).slice(0,5);
-    const bids = (book.bids || []).slice(0,5);
-    $('asks').innerHTML = asks.map(a=>`<tr class="ask"><td>${Number(a[0]).toFixed(2)}</td><td>${Number(a[1]).toFixed(4)}</td></tr>`).join('');
-    $('bids').innerHTML = bids.map(b=>`<tr class="bid"><td>${Number(b[0]).toFixed(2)}</td><td>${Number(b[1]).toFixed(4)}</td></tr>`).join('');
-  }
-
-  async function fetchOrderBook(sym){
-    try {
-      const r = await fetch(`https://api.binance.com/api/v3/depth?symbol=${sym}&limit=10`, {cache:'no-store'});
-      if(!r.ok) throw new Error('book');
-      const d = await r.json();
-      renderOrderBook(d);
-    } catch {}
-  }
 
   function chooseLeverage(close, rv, e20, e50){
     const tail = close.slice(-30), hi=Math.max(...tail), lo=Math.min(...tail);
@@ -421,7 +418,6 @@ function renderTradeBook(){
       const px = Number((await pRes.json()).price);
       const book = await bRes.json();
       state.priceBySym[sym] = px;
-      renderOrderBook(book);
       updateFocusKpis();
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
       renderTradeBook();
@@ -477,11 +473,17 @@ function renderTradeBook(){
     }
   }
 
+
+  function updateBiasChart(){
+    if(!biasChart) return;
+    biasChart.data.datasets[0].data = [state.longCount || 0, state.shortCount || 0];
+    biasChart.update('none');
+  }
+
   async function tick(){
     if(!running) return;
     try{
       await Promise.all(TRADE_SYMBOLS.map(processSymbol));
-      fetchOrderBook($('symbol').value);
 
       const eq = calcEquity();
       renderBalance(eq);
@@ -492,6 +494,7 @@ function renderTradeBook(){
       chart.update('none');
 
       updateFocusKpis();
+      updateBiasChart();
       const upnl = calcUnrealizedPnl();
       $('upnl').textContent = (upnl>=0?'+':'') + fmt(upnl);
       $('upnl').className = 'v '+(upnl>=0?'up':'down');
@@ -548,12 +551,14 @@ function renderTradeBook(){
       autoLevBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,10])),
       signalBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'HOLD'])),
       priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
-      chartTf: '5m'
+      chartTf: '5m',
+      longCount: 0,
+      shortCount: 0
     };
     tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('tradeNotesBody')) $('tradeNotesBody').innerHTML='<tr><td colspan="2" class="tiny">No trade notes yet.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('upnl').textContent='$0.00'; $('marginUsed').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
-    renderBalance(state.balance); updateFocusKpis();
+    renderBalance(state.balance); updateFocusKpis(); updateBiasChart();
     log('State reset to initial 10,000 USDT balance.');
   };
 
