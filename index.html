@@ -33,11 +33,11 @@
     .ask td{color:#ff9bae}.bid td{color:#8effc8}
     .tradeWrap{margin-top:10px}
     .tradeScroller{width:100%;max-height:280px;overflow:auto;border:1px solid #1c2a45;border-radius:10px}
-    .tradeTable{width:100%;min-width:1020px;table-layout:fixed;border-collapse:collapse;font-size:11px}
+    .tradeTable{width:100%;min-width:1240px;table-layout:fixed;border-collapse:collapse;font-size:11px}
     .tradeTable th,.tradeTable td{padding:6px 7px;border-bottom:1px solid #1c2a45;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .tradeTable th{color:#9fb0d6;font-weight:600}
     .tradeTable thead th{position:sticky;top:0;background:#0f172b;z-index:1}
-    .tradeTable th:nth-child(1){width:84px}.tradeTable th:nth-child(2){width:62px}.tradeTable th:nth-child(3){width:88px}.tradeTable th:nth-child(4){width:62px}.tradeTable th:nth-child(5){width:56px}.tradeTable th:nth-child(6){width:88px}.tradeTable th:nth-child(7){width:84px}.tradeTable th:nth-child(8){width:104px}.tradeTable th:nth-child(9){width:84px}
+    .tradeTable th:nth-child(1){width:46px}.tradeTable th:nth-child(2){width:84px}.tradeTable th:nth-child(3){width:62px}.tradeTable th:nth-child(4){width:88px}.tradeTable th:nth-child(5){width:62px}.tradeTable th:nth-child(6){width:56px}.tradeTable th:nth-child(7){width:88px}.tradeTable th:nth-child(8){width:84px}.tradeTable th:nth-child(9){width:104px}.tradeTable th:nth-child(10){width:84px}.tradeTable th:nth-child(11){width:auto}
     .hlcrop{width:100%;height:520px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative;margin-bottom:10px}
     .hlframe{width:100%;height:900px;border:0;transform:translateY(-80px);pointer-events:auto}
         @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
@@ -94,11 +94,14 @@
           <div class="tradeWrap" style="margin-top:12px">
             <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Trade Book</h4>
             <div class="tradeScroller"><table class="tradeTable">
-              <thead><tr><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>PnL</th></tr></thead>
-              <tbody id="tradeBook"><tr><td colspan="9" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
+              <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>PnL</th></tr></thead>
+              <tbody id="tradeBook"><tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
             </table></div>
           <div class="tiny" style="margin:8px 0 4px">Trade Notes</div>
-          <div id="tradeNotes" class="tiny" style="background:#0b1326;border:1px solid #1c2a45;border-radius:10px;padding:8px;max-height:110px;overflow:auto">No trade notes yet.</div>
+          <div class="tradeScroller" style="max-height:180px"><table class="tradeTable">
+            <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>PnL</th><th>Why</th></tr></thead>
+            <tbody id="tradeNotesBody"><tr><td colspan="11" class="tiny">No trade notes yet.</td></tr></tbody>
+          </table></div>
           </div>
         </div>
       </article>
@@ -145,11 +148,12 @@
   function renderTradeBook(){
     const tb = $('tradeBook'); if(!tb) return;
     if(!tradeHistory.length){
-      tb.innerHTML = '<tr><td colspan="9" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
-      const notes = $('tradeNotes'); if(notes) notes.innerHTML = 'No trade notes yet.';
+      tb.innerHTML = '<tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
+      const notesBody = $('tradeNotesBody'); if(notesBody) notesBody.innerHTML = '<tr><td colspan="11" class="tiny">No trade notes yet.</td></tr>';
       return;
     }
-    tb.innerHTML = tradeHistory.map(r=>{
+
+    const rows = tradeHistory.map((r, i)=>{
       const currentPx = state.priceBySym[r.symbol] || r.price || 0;
       const isOpen = r.type === 'OPEN';
       const rowPnl = isOpen
@@ -161,13 +165,17 @@
       const usdNow = isOpen ? ((r.qty||0) * currentPx) : (r.usdSize || 0);
       const usdText = usdNow ? fmt(usdNow) : '-';
       const sideCls = r.side === 'LONG' ? 'up' : (r.side === 'SHORT' ? 'down' : '');
-      return `<tr><td>${r.t}</td><td>${r.type}</td><td>${r.symbol}</td><td class="${sideCls}">${r.side}</td><td>${r.lev?`${r.lev}x`:'-'}</td><td>${r.price? r.price.toFixed(2):'-'}</td><td class="${pnlCls}">${qtyText}</td><td class="${pnlCls}">${usdText}</td><td class="${pnlCls}">${pnlText}</td></tr>`;
-    }).join('');
-    const notes = $('tradeNotes');
-    if(notes){
-      notes.innerHTML = tradeHistory.slice(0,12).map(r=>`[${r.t}] ${r.type} ${r.symbol} ${r.side} — ${r.reason}`).join('<br>') || 'No trade notes yet.';
+      return {i, r, pnlCls, pnlText, qtyText, usdText, sideCls};
+    });
+
+    tb.innerHTML = rows.map(x=>`<tr><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${x.r.price? x.r.price.toFixed(2):'-'}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.pnlCls}">${x.pnlText}</td></tr>`).join('');
+
+    const notesBody = $('tradeNotesBody');
+    if(notesBody){
+      notesBody.innerHTML = rows.map(x=>`<tr><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${x.r.price? x.r.price.toFixed(2):'-'}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.pnlCls}">${x.pnlText}</td><td>${x.r.reason||'-'}</td></tr>`).join('');
     }
   }
+
 
   function addTrade(type, symbol, side, price, qty, pnl, reason, lev){
     const _price = Number(price||0), _qty = Number(qty||0), _pnl = Number(pnl||0);
@@ -483,7 +491,7 @@
       priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
       chartTf: '5m'
     };
-    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="9" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
+    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('tradeNotesBody')) $('tradeNotesBody').innerHTML='<tr><td colspan="11" class="tiny">No trade notes yet.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('upnl').textContent='$0.00'; $('marginUsed').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
     renderBalance(state.balance); updateFocusKpis();
