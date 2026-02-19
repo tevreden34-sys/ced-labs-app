@@ -14,28 +14,29 @@
     .card{background:linear-gradient(180deg,var(--card),#0f1627);border:1px solid var(--line);border-radius:16px;overflow:hidden}
     .head{padding:12px 14px;border-bottom:1px solid #1f2b45;display:flex;justify-content:space-between;align-items:center}
     .body{padding:12px 14px}
-    .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}
     .kpi{background:#0f172b;border:1px solid #22314f;border-radius:12px;padding:10px}
     .kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-weight:700;font-size:18px;margin-top:4px}
     .up{color:var(--green)} .down{color:var(--red)} .warn{color:var(--yellow)}
-    .controls{display:flex;gap:8px;flex-wrap:wrap}
-    select,button{background:#111a30;color:var(--text);border:1px solid #2d3d61;border-radius:10px;padding:8px 10px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    select,button,input[type=range]{background:#111a30;color:var(--text);border:1px solid #2d3d61;border-radius:10px;padding:8px 10px}
     button{cursor:pointer}
-    .log{max-height:250px;overflow:auto;font-size:12px;color:#c9d7f4;background:#0b1326;border:1px solid #1f2f50;border-radius:10px;padding:8px}
-    .row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed #20304f}.row:last-child{border-bottom:0}
+    .log{max-height:290px;overflow:auto;font-size:12px;color:#c9d7f4;background:#0b1326;border:1px solid #1f2f50;border-radius:10px;padding:8px;line-height:1.45}
+    .tiny{font-size:12px;color:var(--muted)}
     @media(max-width:900px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
 </head>
 <body>
   <main class="wrap">
     <h1>Cedric Trade Hub</h1>
-    <p class="sub">Chosen bot stack: <b>Freqtrade-style EMA/RSI paper trader</b> (safe mode) · live Binance candles + performance graph</p>
+    <p class="sub">Freqtrade-style paper bot · 10,000 USDT balance · leverage up to 50x · auto run window: 15 minutes</p>
 
     <div class="kpis">
       <div class="kpi"><div class="l">Symbol</div><div class="v" id="sym">BTCUSDT</div></div>
       <div class="kpi"><div class="l">Price</div><div class="v" id="price">-</div></div>
       <div class="kpi"><div class="l">Signal</div><div class="v" id="signal">-</div></div>
       <div class="kpi"><div class="l">Paper PnL</div><div class="v" id="pnl">$0.00</div></div>
+      <div class="kpi"><div class="l">Time left</div><div class="v" id="timeLeft">15:00</div></div>
     </div>
 
     <section class="grid">
@@ -48,14 +49,15 @@
         <div class="head"><b>Bot Control</b></div>
         <div class="body">
           <div class="controls" style="margin-bottom:10px">
-            <select id="symbol">
-              <option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option>
-            </select>
+            <select id="symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option></select>
             <select id="interval"><option value="1m">1m</option><option value="5m" selected>5m</option><option value="15m">15m</option></select>
-            <button id="start">Start</button>
+            <label class="tiny">Lev: <span id="levVal">10x</span></label>
+            <input id="lev" type="range" min="1" max="50" value="10" />
+            <button id="start">Start 15m</button>
             <button id="stop">Stop</button>
             <button id="reset">Reset</button>
           </div>
+          <div class="tiny" style="margin-bottom:8px">Every opened/closed position is logged with reason (EMA crossover + RSI + leverage + size).</div>
           <div class="log" id="log"></div>
         </div>
       </article>
@@ -65,9 +67,13 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  let running = true;
-  let state = { cash: 10000, qty: 0, entry: 0, trades: 0, equity: [10000], labels: ['start'] };
-  let timer = null;
+  const RUN_MS = 15 * 60 * 1000;
+  let running = false;
+  let startAt = 0;
+  let tickTimer = null;
+  let countdownTimer = null;
+
+  let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'] };
 
   const chart = new Chart($('equityChart').getContext('2d'), {
     type: 'line',
@@ -75,58 +81,136 @@
     options: { responsive: true, plugins: { legend: { display:false }}, scales: { x: { display:false }, y: { ticks: { color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
   });
 
-  function log(msg){ const t=new Date().toLocaleTimeString(); $('log').innerHTML = `[${t}] ${msg}<br>` + $('log').innerHTML; }
+  function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function log(msg){ $('log').innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + $('log').innerHTML; }
   function ema(arr, p){ const k=2/(p+1); let v=arr[0]; for(let i=1;i<arr.length;i++) v=arr[i]*k+v*(1-k); return v; }
   function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
-  function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+  function updateTimeLeft(){
+    if(!running) { $('timeLeft').textContent = '15:00'; return; }
+    const left = Math.max(0, RUN_MS - (Date.now() - startAt));
+    const m = Math.floor(left/60000).toString().padStart(2,'0');
+    const s = Math.floor((left%60000)/1000).toString().padStart(2,'0');
+    $('timeLeft').textContent = `${m}:${s}`;
+    if(left <= 0){
+      stopBot('15m run completed');
+    }
+  }
+
+  function calcEquity(px){
+    if(!state.side) return state.balance;
+    const lev = Number($('lev').value);
+    const pnl = state.side === 'LONG' ? (px - state.entry) * state.qty : (state.entry - px) * state.qty;
+    return state.balance + pnl;
+  }
+
+  function openPosition(side, px, reason){
+    const lev = Number($('lev').value);
+    const margin = state.balance * 0.1; // 10% allocation per trade
+    const notional = margin * lev;
+    const qty = notional / px;
+    state.marginUsed = margin;
+    state.qty = qty;
+    state.entry = px;
+    state.side = side;
+    state.trades++;
+    log(`OPEN ${side} ${$('symbol').value} @ ${px.toFixed(2)} | lev ${lev}x | qty ${qty.toFixed(4)} | margin ${fmt(margin)} | reason: ${reason}`);
+  }
+
+  function closePosition(px, reason){
+    if(!state.side) return;
+    const pnl = state.side === 'LONG' ? (px - state.entry) * state.qty : (state.entry - px) * state.qty;
+    state.balance += pnl;
+    log(`CLOSE ${state.side} @ ${px.toFixed(2)} | pnl ${pnl>=0?'+':''}${fmt(pnl)} | new balance ${fmt(state.balance)} | reason: ${reason}`);
+    state.qty = 0; state.entry = 0; state.side = null; state.marginUsed = 0; state.trades++;
+  }
 
   async function tick(){
     if(!running) return;
     const sym=$('symbol').value, intv=$('interval').value;
     try{
-      const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${intv}&limit=120`, {cache:'no-store'});
+      const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${intv}&limit=140`, {cache:'no-store'});
       if(!r.ok) throw new Error('market fetch failed');
       const kl = await r.json();
       const close = kl.map(c=>Number(c[4]));
-      const px = close[close.length-1];
-      const e20=ema(close.slice(-60),20), e50=ema(close.slice(-80),50), rv=rsi(close,14);
+      const px = close.at(-1);
+      const e20 = ema(close.slice(-80),20);
+      const e50 = ema(close.slice(-120),50);
+      const rv = rsi(close,14);
+
       let sig='HOLD';
-      if(e20>e50 && rv>52) sig='BUY';
-      if(e20<e50 && rv<48) sig='SELL';
+      if(e20>e50 && rv>53) sig='BUY';
+      if(e20<e50 && rv<47) sig='SELL';
 
-      if(sig==='BUY' && state.qty===0){ state.qty = state.cash/px; state.entry=px; state.cash=0; state.trades++; log(`BUY ${sym} @ ${px.toFixed(2)} | RSI ${rv.toFixed(1)}`); }
-      if(sig==='SELL' && state.qty>0){ state.cash = state.qty*px; state.qty=0; state.entry=0; state.trades++; log(`SELL ${sym} @ ${px.toFixed(2)} | RSI ${rv.toFixed(1)}`); }
+      const reason = `EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}`;
 
-      const eq = state.cash + state.qty*px;
+      if(sig==='BUY'){
+        if(state.side==='SHORT') closePosition(px, `trend flip bullish | ${reason}`);
+        if(!state.side) openPosition('LONG', px, reason);
+      } else if(sig==='SELL'){
+        if(state.side==='LONG') closePosition(px, `trend flip bearish | ${reason}`);
+        if(!state.side) openPosition('SHORT', px, reason);
+      }
+
+      const eq = calcEquity(px);
       state.equity.push(eq); state.labels.push(new Date().toLocaleTimeString());
-      if(state.equity.length>120){ state.equity.shift(); state.labels.shift(); }
+      if(state.equity.length>220){ state.equity.shift(); state.labels.shift(); }
 
       chart.data.labels = state.labels;
       chart.data.datasets[0].data = state.equity;
       chart.update('none');
 
-      $('sym').textContent=sym;
-      $('price').textContent=fmt(px);
-      $('signal').textContent=sig;
-      $('signal').className='v '+(sig==='BUY'?'up':sig==='SELL'?'down':'warn');
-      const pnl = eq-10000;
-      $('pnl').textContent=(pnl>=0?'+':'')+fmt(pnl);
-      $('pnl').className='v '+(pnl>=0?'up':'down');
-      $('updated').textContent='last tick: '+new Date().toLocaleTimeString();
+      $('sym').textContent = sym;
+      $('price').textContent = fmt(px);
+      $('signal').textContent = sig;
+      $('signal').className = 'v '+(sig==='BUY'?'up':sig==='SELL'?'down':'warn');
+      const pnl = eq - 10000;
+      $('pnl').textContent = (pnl>=0?'+':'') + fmt(pnl);
+      $('pnl').className = 'v '+(pnl>=0?'up':'down');
+      $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
     }catch(e){
       log('Data issue -> retrying in 2s');
     }
-    timer=setTimeout(tick,2000);
+    tickTimer = setTimeout(tick, 2000);
   }
 
-  $('start').onclick=()=>{ if(!running){ running=true; log('Bot started'); tick(); }};
-  $('stop').onclick=()=>{ running=false; clearTimeout(timer); log('Bot stopped'); };
-  $('reset').onclick=()=>{ state={cash:10000,qty:0,entry:0,trades:0,equity:[10000],labels:['start']}; chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update(); log('State reset'); };
-  $('symbol').onchange=()=>log('Symbol -> '+$('symbol').value);
-  $('interval').onchange=()=>log('Interval -> '+$('interval').value);
+  function startBot(){
+    if(running) return;
+    running = true;
+    startAt = Date.now();
+    clearTimeout(tickTimer);
+    clearInterval(countdownTimer);
+    countdownTimer = setInterval(updateTimeLeft, 1000);
+    updateTimeLeft();
+    log(`Run started for 15 minutes | initial balance ${fmt(state.balance)} | leverage ${$('lev').value}x`);
+    tick();
+  }
 
-  log('Paper mode active (no real orders).');
-  tick();
+  function stopBot(msg='stopped manually'){
+    running = false;
+    clearTimeout(tickTimer);
+    clearInterval(countdownTimer);
+    updateTimeLeft();
+    if(state.side){
+      log(`Position left open (${state.side}) — close manually with Reset if needed.`);
+    }
+    log(`Bot ${msg}`);
+  }
+
+  $('lev').addEventListener('input', ()=> $('levVal').textContent = $('lev').value + 'x');
+  $('start').onclick = startBot;
+  $('stop').onclick = () => stopBot('stopped manually');
+  $('reset').onclick = () => {
+    stopBot('reset');
+    state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'] };
+    chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
+    $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
+    log('State reset to initial 10,000 USDT balance.');
+  };
+
+  $('symbol').onchange = ()=> log('Symbol -> '+$('symbol').value);
+  $('interval').onchange = ()=> log('Interval -> '+$('interval').value);
+  log('Paper mode active (no real orders). Click Start 15m to run.');
 })();
 </script>
 </body>
