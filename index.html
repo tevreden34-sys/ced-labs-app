@@ -109,6 +109,7 @@
   const RISK_PCT = 0.01;
   const TP1_R = 1.5;
   const TP1_CLOSE = 0.85;
+  const TRADE_SYMBOLS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT'];
 
   let running = false;
   let startAt = 0;
@@ -116,7 +117,17 @@
   let countdownTimer = null;
   let tradeHistory = [];
 
-  let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10, autoTf: '5m' };
+  let state = {
+    balance: 10000,
+    positions: {}, // sym -> {side,qty,entry,sl,tp1,tp1Hit,lev}
+    trades: 0,
+    equity: [10000],
+    labels: ['start'],
+    autoTfBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'5m'])),
+    autoLevBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,10])),
+    signalBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'HOLD'])),
+    priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0]))
+  };
 
   const chart = new Chart($('equityChart').getContext('2d'), {
     type: 'line',
@@ -124,57 +135,16 @@
     options: { responsive: true, plugins: { legend: { display:false }}, scales: { x: { display:false }, y: { ticks: { color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
   });
 
-
-
   function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function log(msg){ $('log').innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + $('log').innerHTML; }
-
-  function addTrade(type, side, price, qty, pnl, reason){
-    tradeHistory.unshift({
-      t:new Date().toLocaleTimeString(),
-      type, side:side||'-',
-      price: Number(price||0), qty: Number(qty||0), pnl: Number(pnl||0), reason: reason||'-'
-    });
-    if(tradeHistory.length>30) tradeHistory = tradeHistory.slice(0,30);
-    const tb = $('tradeBook');
-    if(!tb) return;
-    tb.innerHTML = tradeHistory.map(r=>`<tr><td>${r.t}</td><td>${r.type}</td><td>${r.side}</td><td>${r.price? r.price.toFixed(2):'-'}</td><td>${r.qty? r.qty.toFixed(4):'-'}</td><td class="${r.pnl>=0?'up':'down'}">${r.pnl?((r.pnl>=0?'+':'')+fmt(r.pnl)):'-'}</td><td>${r.reason}</td></tr>`).join('');
-  }
   function ema(arr, p){ const k=2/(p+1); let v=arr[0]; for(let i=1;i<arr.length;i++) v=arr[i]*k+v*(1-k); return v; }
   function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
 
-  function chooseLeverage(close, rv, e20, e50){
-    const tail = close.slice(-30);
-    const hi = Math.max(...tail), lo = Math.min(...tail);
-    const volPct = ((hi - lo) / Math.max(1e-9, lo)) * 100;
-    const trendStrength = Math.abs((e20 - e50) / Math.max(1e-9, e50)) * 100;
-
-    let lev = 10;
-    if(volPct < 0.6 && trendStrength > 0.18) lev = 35;
-    else if(volPct < 1.0 && trendStrength > 0.12) lev = 25;
-    else if(volPct < 1.8) lev = 15;
-    else lev = 8;
-
-    if(rv > 75 || rv < 25) lev = Math.max(5, Math.floor(lev * 0.7));
-    lev = Math.max(5, Math.min(50, Math.round(lev)));
-    return lev;
-  }
-
-  function pickBestTimeframe(dataByTf){
-    const tfs = ['1m','5m','15m'];
-    let best = {tf:'5m', score:-1e9};
-    for(const tf of tfs){
-      const close = dataByTf[tf];
-      if(!close || close.length < 60) continue;
-      const e20 = ema(close.slice(-80),20), e50 = ema(close.slice(-120),50), rv = rsi(close,14);
-      const tail = close.slice(-30); const hi=Math.max(...tail), lo=Math.min(...tail);
-      const volPct = ((hi-lo)/Math.max(1e-9,lo))*100;
-      const trend = Math.abs((e20-e50)/Math.max(1e-9,e50))*100;
-      const momentum = Math.abs(rv-50)/50;
-      const score = trend*1.4 + momentum*0.8 - volPct*0.25;
-      if(score > best.score) best = {tf, score};
-    }
-    return best.tf;
+  function addTrade(type, symbol, side, price, qty, pnl, reason){
+    tradeHistory.unshift({ t:new Date().toLocaleTimeString(), type, symbol, side:side||'-', price:Number(price||0), qty:Number(qty||0), pnl:Number(pnl||0), reason:reason||'-' });
+    if(tradeHistory.length>40) tradeHistory = tradeHistory.slice(0,40);
+    const tb = $('tradeBook'); if(!tb) return;
+    tb.innerHTML = tradeHistory.map(r=>`<tr><td>${r.t}</td><td>${r.type}</td><td>${r.side}/${r.symbol}</td><td>${r.price? r.price.toFixed(2):'-'}</td><td>${r.qty? r.qty.toFixed(4):'-'}</td><td class="${r.pnl>=0?'up':'down'}">${r.pnl?((r.pnl>=0?'+':'')+fmt(r.pnl)):'-'}</td><td>${r.reason}</td></tr>`).join('');
   }
 
   function renderBalance(){ $('balance').textContent = fmt(state.balance); }
@@ -192,9 +162,7 @@
       if(!r.ok) throw new Error('book');
       const d = await r.json();
       renderOrderBook(d);
-    } catch {
-      // keep old order book if fetch fails
-    }
+    } catch {}
   }
 
   function updateTimeLeft(){
@@ -206,132 +174,163 @@
     if(left <= 0) stopBot('30m run completed');
   }
 
-  function calcEquity(px){
-    if(!state.side) return state.balance;
-    const pnl = state.side === 'LONG' ? (px - state.entry) * state.qty : (state.entry - px) * state.qty;
-    return state.balance + pnl;
+  function chooseLeverage(close, rv, e20, e50){
+    const tail = close.slice(-30), hi=Math.max(...tail), lo=Math.min(...tail);
+    const volPct=((hi-lo)/Math.max(1e-9,lo))*100;
+    const trendStrength=Math.abs((e20-e50)/Math.max(1e-9,e50))*100;
+    let lev=10;
+    if(volPct<0.6&&trendStrength>0.18) lev=35; else if(volPct<1.0&&trendStrength>0.12) lev=25; else if(volPct<1.8) lev=15; else lev=8;
+    if(rv>75||rv<25) lev=Math.max(5,Math.floor(lev*0.7));
+    return Math.max(5,Math.min(50,Math.round(lev)));
   }
 
-  function openPosition(side, px, reason, lev){
+  function pickBestTimeframe(dataByTf){
+    const tfs=['1m','5m','15m']; let best={tf:'5m',score:-1e9};
+    for(const tf of tfs){
+      const close=dataByTf[tf]; if(!close||close.length<60) continue;
+      const e20=ema(close.slice(-80),20), e50=ema(close.slice(-120),50), rv=rsi(close,14);
+      const tail=close.slice(-30), hi=Math.max(...tail), lo=Math.min(...tail);
+      const volPct=((hi-lo)/Math.max(1e-9,lo))*100;
+      const trend=Math.abs((e20-e50)/Math.max(1e-9,e50))*100;
+      const momentum=Math.abs(rv-50)/50;
+      const score=trend*1.4+momentum*0.8-volPct*0.25;
+      if(score>best.score) best={tf,score};
+    }
+    return best.tf;
+  }
+
+  function calcEquity(){
+    let eq = state.balance;
+    for(const sym of TRADE_SYMBOLS){
+      const p = state.positions[sym];
+      if(!p) continue;
+      const px = state.priceBySym[sym] || p.entry;
+      const pnl = p.side==='LONG' ? (px-p.entry)*p.qty : (p.entry-px)*p.qty;
+      eq += pnl;
+    }
+    return eq;
+  }
+
+  function openPosition(sym, side, px, reason, lev){
+    if(state.positions[sym]) return;
     const margin = state.balance * 0.10;
     const notional = margin * lev;
     const qty = notional / px;
-
-    state.autoLev = lev;
-    state.marginUsed = margin;
-    state.qty = qty;
-    state.entry = px;
-    state.side = side;
-    state.trades++;
-    state.tp1Hit = false;
-
     const oneR = px * RISK_PCT;
-    if(side === 'LONG'){ state.sl = px - oneR; state.tp1 = px + (oneR * TP1_R); }
-    else { state.sl = px + oneR; state.tp1 = px - (oneR * TP1_R); }
-
-    log(`OPEN ${side} ${$('symbol').value} @ ${px.toFixed(2)} | lev ${lev}x | qty ${qty.toFixed(4)} | margin ${fmt(margin)} | SL ${state.sl.toFixed(2)} (-1R) | TP1 ${state.tp1.toFixed(2)} (+2.5R) | reason: ${reason}`);
-    addTrade('OPEN', side, px, qty, 0, reason);
+    const pos = { side, qty, entry:px, lev, tp1Hit:false, sl:0, tp1:0 };
+    if(side==='LONG'){ pos.sl=px-oneR; pos.tp1=px+(oneR*TP1_R); }
+    else { pos.sl=px+oneR; pos.tp1=px-(oneR*TP1_R); }
+    state.positions[sym]=pos;
+    state.trades++;
+    log(`OPEN ${side} ${sym} @ ${px.toFixed(2)} | lev ${lev}x | qty ${qty.toFixed(4)} | SL ${pos.sl.toFixed(2)} | TP1 ${pos.tp1.toFixed(2)} | ${reason}`);
+    addTrade('OPEN', sym, side, px, qty, 0, reason);
   }
 
-  function closePosition(px, reason){
-    if(!state.side) return;
-    const pnl = state.side === 'LONG' ? (px - state.entry) * state.qty : (state.entry - px) * state.qty;
+  function closePosition(sym, px, reason){
+    const p = state.positions[sym];
+    if(!p) return;
+    const pnl = p.side==='LONG' ? (px-p.entry)*p.qty : (p.entry-px)*p.qty;
     state.balance += pnl;
     renderBalance();
-    log(`CLOSE ${state.side} @ ${px.toFixed(2)} | pnl ${pnl>=0?'+':''}${fmt(pnl)} | new balance ${fmt(state.balance)} | reason: ${reason}`);
-    addTrade('CLOSE', state.side, px, state.qty, pnl, reason);
-    state.qty = 0; state.entry = 0; state.side = null; state.marginUsed = 0; state.trades++; state.sl = 0; state.tp1 = 0; state.tp1Hit = false;
+    log(`CLOSE ${p.side} ${sym} @ ${px.toFixed(2)} | pnl ${pnl>=0?'+':''}${fmt(pnl)} | new balance ${fmt(state.balance)} | ${reason}`);
+    addTrade('CLOSE', sym, p.side, px, p.qty, pnl, reason);
+    delete state.positions[sym];
+    state.trades++;
   }
 
-  function takePartial(px){
-    if(!state.side || state.tp1Hit) return;
-    const closeQty = state.qty * TP1_CLOSE;
-    const pnl = state.side === 'LONG' ? (px - state.entry) * closeQty : (state.entry - px) * closeQty;
+  function takePartial(sym, px){
+    const p = state.positions[sym]; if(!p || p.tp1Hit) return;
+    const closeQty = p.qty * TP1_CLOSE;
+    const pnl = p.side==='LONG' ? (px-p.entry)*closeQty : (p.entry-px)*closeQty;
     state.balance += pnl;
-    state.qty -= closeQty;
-    state.tp1Hit = true;
-    state.sl = state.entry;
+    p.qty -= closeQty;
+    p.tp1Hit = true;
+    p.sl = p.entry;
     renderBalance();
-    log(`TP1 HIT @ ${px.toFixed(2)} | closed 70% (${closeQty.toFixed(4)}) | realized ${pnl>=0?'+':''}${fmt(pnl)} | moved SL to breakeven @ ${state.sl.toFixed(2)}`);
-    addTrade('TP1', state.side, px, closeQty, pnl, 'Take 85% at 1.5R');
+    log(`TP1 HIT ${sym} @ ${px.toFixed(2)} | closed 85% (${closeQty.toFixed(4)}) | realized ${pnl>=0?'+':''}${fmt(pnl)} | SL -> BE`);
+    addTrade('TP1', sym, p.side, px, closeQty, pnl, 'Take 85% at 1.5R');
   }
 
-  function managePosition(px){
-    if(!state.side) return;
-    if(!state.tp1Hit){
-      if((state.side === 'LONG' && px >= state.tp1) || (state.side === 'SHORT' && px <= state.tp1)) takePartial(px);
-    }
-    if((state.side === 'LONG' && px <= state.sl) || (state.side === 'SHORT' && px >= state.sl)){
-      log(`STOP TRIGGER ${state.side} | price ${px.toFixed(2)} touched SL ${state.sl.toFixed(2)}`);
-      closePosition(px, state.tp1Hit ? 'breakeven stop after TP1' : '-1R stop loss hit');
+  function managePosition(sym, px){
+    const p = state.positions[sym]; if(!p) return;
+    if(!p.tp1Hit && ((p.side==='LONG'&&px>=p.tp1)||(p.side==='SHORT'&&px<=p.tp1))) takePartial(sym, px);
+    if((p.side==='LONG'&&px<=p.sl)||(p.side==='SHORT'&&px>=p.sl)) closePosition(sym, px, p.tp1Hit?'breakeven stop after TP1':'-1R stop loss hit');
+  }
+
+  function updateFocusKpis(){
+    const sym = $('symbol').value;
+    const px = state.priceBySym[sym] || 0;
+    const sig = state.signalBySym[sym] || 'HOLD';
+    $('sym').textContent = sym;
+    $('price').textContent = px ? fmt(px) : '-';
+    $('signal').textContent = sig;
+    $('signal').className = 'v '+(sig==='BUY'?'up':sig==='SELL'?'down':'warn');
+    $('levVal').textContent = (state.autoLevBySym[sym] || 10) + 'x';
+    $('tfVal').textContent = state.autoTfBySym[sym] || '5m';
+  }
+
+  async function processSymbol(sym){
+    const [k1,k5,k15,pRes] = await Promise.all([
+      fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1m&limit=140`, {cache:'no-store'}),
+      fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=5m&limit=140`, {cache:'no-store'}),
+      fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=15m&limit=140`, {cache:'no-store'}),
+      fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`, {cache:'no-store'}),
+    ]);
+    if(!k1.ok || !k5.ok || !k15.ok || !pRes.ok) throw new Error('market fetch failed '+sym);
+
+    const byTf = {
+      '1m': (await k1.json()).map(c=>Number(c[4])),
+      '5m': (await k5.json()).map(c=>Number(c[4])),
+      '15m': (await k15.json()).map(c=>Number(c[4]))
+    };
+    const px = Number((await pRes.json()).price);
+    state.priceBySym[sym] = px;
+
+    const tf = pickBestTimeframe(byTf);
+    state.autoTfBySym[sym] = tf;
+    const close = byTf[tf];
+    const e20 = ema(close.slice(-80),20), e50 = ema(close.slice(-120),50), rv = rsi(close,14);
+    const autoLev = chooseLeverage(close, rv, e20, e50);
+    state.autoLevBySym[sym] = autoLev;
+
+    managePosition(sym, px);
+
+    let sig='HOLD';
+    if(e20>e50 && rv>53) sig='BUY';
+    if(e20<e50 && rv<47) sig='SELL';
+    state.signalBySym[sym]=sig;
+
+    const reason = `TF ${tf}, EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}, autoLev ${autoLev}x`;
+    const pos = state.positions[sym];
+
+    if(sig==='BUY'){
+      if(pos && pos.side==='SHORT') closePosition(sym, px, `trend flip bullish | ${reason}`);
+      if(!state.positions[sym]) openPosition(sym, 'LONG', px, reason, autoLev);
+    } else if(sig==='SELL'){
+      if(pos && pos.side==='LONG') closePosition(sym, px, `trend flip bearish | ${reason}`);
+      if(!state.positions[sym]) openPosition(sym, 'SHORT', px, reason, autoLev);
     }
   }
 
   async function tick(){
     if(!running) return;
-    const sym=$('symbol').value;
     try{
-      const [k1, k5, k15, pRes] = await Promise.all([
-        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1m&limit=140`, {cache:'no-store'}),
-        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=5m&limit=140`, {cache:'no-store'}),
-        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=15m&limit=140`, {cache:'no-store'}),
-        fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`, {cache:'no-store'}),
-      ]);
-      fetchOrderBook(sym);
-      if(!k1.ok || !k5.ok || !k15.ok || !pRes.ok) throw new Error('market fetch failed');
-      const kl1 = await k1.json();
-      const kl5 = await k5.json();
-      const kl15 = await k15.json();
-      const pt = await pRes.json();
-      const byTf = {
-        '1m': kl1.map(c=>Number(c[4])),
-        '5m': kl5.map(c=>Number(c[4])),
-        '15m': kl15.map(c=>Number(c[4]))
-      };
-      const pickedTf = pickBestTimeframe(byTf);
-      if(state.autoTf !== pickedTf){ log(`Auto TF switched ${state.autoTf} -> ${pickedTf}`); }
-      state.autoTf = pickedTf;
-      $('tfVal').textContent = pickedTf;
-      const close = byTf[pickedTf];
-      const px = Number(pt.price);
-      const e20 = ema(close.slice(-80),20);
-      const e50 = ema(close.slice(-120),50);
-      const rv = rsi(close,14);
+      await Promise.all(TRADE_SYMBOLS.map(processSymbol));
+      fetchOrderBook($('symbol').value);
 
-      managePosition(px);
-
-      let sig='HOLD';
-      if(e20>e50 && rv>53) sig='BUY';
-      if(e20<e50 && rv<47) sig='SELL';
-      const autoLev = chooseLeverage(close, rv, e20, e50);
-      state.autoLev = autoLev;
-      $('levVal').textContent = autoLev + "x";
-      const reason = `TF ${state.autoTf}, EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}, autoLev ${autoLev}x`;
-
-      if(sig==='BUY'){
-        if(state.side==='SHORT') closePosition(px, `trend flip bullish | ${reason}`);
-        if(!state.side) openPosition('LONG', px, reason, autoLev);
-      } else if(sig==='SELL'){
-        if(state.side==='LONG') closePosition(px, `trend flip bearish | ${reason}`);
-        if(!state.side) openPosition('SHORT', px, reason, autoLev);
-      }
-
-      const eq = calcEquity(px);
+      const eq = calcEquity();
       state.equity.push(eq); state.labels.push(new Date().toLocaleTimeString());
       if(state.equity.length>220){ state.equity.shift(); state.labels.shift(); }
       chart.data.labels = state.labels;
       chart.data.datasets[0].data = state.equity;
       chart.update('none');
 
-      $('sym').textContent = sym;
-      $('price').textContent = fmt(px);
-      $('signal').textContent = sig;
-      $('signal').className = 'v '+(sig==='BUY'?'up':sig==='SELL'?'down':'warn');
+      updateFocusKpis();
       const pnl = eq - 10000;
       $('pnl').textContent = (pnl>=0?'+':'') + fmt(pnl);
       $('pnl').className = 'v '+(pnl>=0?'up':'down');
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
-    }catch{
+    }catch(e){
       log('Data issue -> retrying in 1s');
     }
     tickTimer = setTimeout(tick, 1000);
@@ -345,7 +344,7 @@
     clearInterval(countdownTimer);
     countdownTimer = setInterval(updateTimeLeft, 1000);
     updateTimeLeft();
-    log(`Run started for 30 minutes | initial balance ${fmt(state.balance)} | leverage mode: AUTO (5x-50x)`);
+    log(`Run started for 30 minutes | initial balance ${fmt(state.balance)} | mode: multi-pair (${TRADE_SYMBOLS.join(', ')})`);
     tick();
   }
 
@@ -360,25 +359,42 @@
   $('start').onclick = startBot;
   $('stop').onclick = () => stopBot('stopped manually');
   $('panic').onclick = () => {
-    if(!state.side){ log('PANIC SELL clicked, but no open position.'); return; }
-    const pxText = $('price').textContent.replace(/[$,]/g,'');
-    const px = Number(pxText || 0) || state.entry;
-    closePosition(px, 'PANIC SELL manual emergency exit');
+    const prices = state.priceBySym;
+    const openSyms = Object.keys(state.positions);
+    if(!openSyms.length){ log('PANIC SELL clicked, but no open positions.'); return; }
+    for(const sym of openSyms){
+      const px = prices[sym] || state.positions[sym].entry;
+      closePosition(sym, px, 'PANIC SELL manual emergency exit');
+    }
   };
+
   $('reset').onclick = () => {
     stopBot('reset');
-    state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10, autoTf: '5m' };
+    state = {
+      balance: 10000,
+      positions: {},
+      trades: 0,
+      equity: [10000],
+      labels: ['start'],
+      autoTfBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'5m'])),
+      autoLevBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,10])),
+      signalBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'HOLD'])),
+      priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0]))
+    };
     tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
-    $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-'; renderBalance();
+    $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
+    renderBalance(); updateFocusKpis();
     log('State reset to initial 10,000 USDT balance.');
   };
 
-  $('symbol').onchange = ()=> log('Symbol -> '+$('symbol').value);
+  $('symbol').onchange = ()=>{ log('Focus symbol -> '+$('symbol').value); updateFocusKpis(); fetchOrderBook($('symbol').value); };
+
   renderBalance();
-  $('levVal').textContent = state.autoLev + 'x';
-  $('tfVal').textContent = state.autoTf;
-  log('Paper mode active. Aggressive-safe TP logic: +1.5R take 85%, then SL moved to breakeven.');
+  $('tfVal').textContent = '5m';
+  $('levVal').textContent = '10x';
+  fetchOrderBook($('symbol').value);
+  log('Paper mode active. Multi-pair enabled: opens independent positions on BTC/ETH/SOL/BNB using same rules.');
 })();
 </script>
 </body>
