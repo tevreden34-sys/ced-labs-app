@@ -32,7 +32,7 @@
     .bookTable td:last-child{text-align:right}
     .ask td{color:#ff9bae}.bid td{color:#8effc8}
     .tradeWrap{margin-top:10px}
-    .tradeScroller{width:100%;max-height:220px;overflow:auto;border:1px solid #1c2a45;border-radius:10px}
+    .tradeScroller{width:100%;max-height:280px;overflow:auto;border:1px solid #1c2a45;border-radius:10px}
     .tradeTable{width:100%;min-width:860px;table-layout:fixed;border-collapse:collapse;font-size:11px}
     .tradeTable th,.tradeTable td{padding:6px 7px;border-bottom:1px solid #1c2a45;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .tradeTable th{color:#9fb0d6;font-weight:600}
@@ -73,20 +73,14 @@
               <table class="bookTable" id="bids"></table>
             </div>
           </div>
-          <div class="tradeWrap">
-            <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Trade Book</h4>
-            <div class="tradeScroller"><table class="tradeTable">
-              <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Price</th><th>Qty</th><th>PnL</th><th>Why</th></tr></thead>
-              <tbody id="tradeBook"><tr><td colspan="7" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
-            </table></div>
-          </div>
+
         </div>
       </article>
 
       <article class="card">
         <div class="head"><b>Bot Control</b></div>
         <div class="body">
-          <div class="controls" style="margin-bottom:10px">
+          <div class="controls" style="margin-bottom:8px">
             <select id="symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option></select>
             <label class="tiny">Auto TF: <span id="tfVal">-</span></label>
             <label class="tiny">Auto Lev (5-70x): <span id="levVal">-</span></label>
@@ -97,6 +91,13 @@
           </div>
           <div class="tiny" style="margin:10px 0 6px">Performance Chart</div>
           <canvas id="equityChart" height="140"></canvas>
+          <div class="tradeWrap" style="margin-top:12px">
+            <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Trade Book</h4>
+            <div class="tradeScroller"><table class="tradeTable">
+              <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Price</th><th>Qty</th><th>PnL</th><th>Why</th></tr></thead>
+              <tbody id="tradeBook"><tr><td colspan="7" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
+            </table></div>
+          </div>
         </div>
       </article>
     </section>
