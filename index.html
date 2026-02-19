@@ -30,6 +30,7 @@
     .bookTable td{padding:4px 6px;border-bottom:1px solid #1c2a45}
     .bookTable td:last-child{text-align:right}
     .ask td{color:#ff9bae}.bid td{color:#8effc8}
+    .hlframe{width:100%;height:320px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326}
     @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
     @media(max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
@@ -80,8 +81,8 @@
           </div>
           <div class="tiny" style="margin-bottom:8px">Logs include entry reason, -1R SL, TP1 at +2.5R (70% close), then SL moved to breakeven.</div>
           <div class="log" id="log"></div>
-          <div class="tiny" style="margin:10px 0 6px">Live Pair Chart</div>
-          <canvas id="priceChart" height="120"></canvas>
+          <div class="tiny" style="margin:10px 0 6px">Hyperliquid Chart</div>
+          <iframe id="hlChart" class="hlframe" src="https://app.hyperliquid.xyz/trade/BTC" loading="lazy" referrerpolicy="no-referrer"></iframe>
         </div>
       </article>
     </section>
@@ -101,8 +102,6 @@
   let countdownTimer = null;
 
   let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10 };
-  let priceSeries = [];
-  let priceLabels = [];
 
   const chart = new Chart($('equityChart').getContext('2d'), {
     type: 'line',
@@ -110,11 +109,7 @@
     options: { responsive: true, plugins: { legend: { display:false }}, scales: { x: { display:false }, y: { ticks: { color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
   });
 
-  const priceChart = new Chart($('priceChart').getContext('2d'), {
-    type: 'line',
-    data: { labels: priceLabels, datasets: [{ label:'Price', data: priceSeries, borderColor:'#19c37d', backgroundColor:'rgba(25,195,125,.12)', fill:true, tension:.18, pointRadius:0 }]},
-    options: { responsive:true, plugins:{ legend:{ display:false }}, scales:{ x:{ display:false }, y:{ ticks:{ color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
-  });
+
 
   function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function log(msg){ $('log').innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + $('log').innerHTML; }
@@ -239,12 +234,6 @@
       const pt = await pRes.json();
       const close = kl.map(c=>Number(c[4]));
       const px = Number(pt.price);
-      priceSeries.push(px);
-      priceLabels.push(new Date().toLocaleTimeString());
-      if(priceSeries.length>220){ priceSeries.shift(); priceLabels.shift(); }
-      priceChart.data.labels = priceLabels;
-      priceChart.data.datasets[0].data = priceSeries;
-      priceChart.update('none');
       const e20 = ema(close.slice(-80),20);
       const e50 = ema(close.slice(-120),50);
       const rv = rsi(close,14);
@@ -320,7 +309,6 @@
     stopBot('reset');
     state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10 };
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
-    priceSeries=[]; priceLabels=[]; priceChart.data.labels=priceLabels; priceChart.data.datasets[0].data=priceSeries; priceChart.update();
     $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-'; renderBalance();
     log('State reset to initial 10,000 USDT balance.');
   };
