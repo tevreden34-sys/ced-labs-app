@@ -97,11 +97,8 @@
               <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>PnL</th></tr></thead>
               <tbody id="tradeBook"><tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
             </table></div>
-          <div class="tiny" style="margin:8px 0 4px">Trade Notes</div>
-          <div class="tradeScroller" style="max-height:180px"><table class="tradeTable">
-            <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>PnL</th><th>Why</th></tr></thead>
-            <tbody id="tradeNotesBody"><tr><td colspan="11" class="tiny">No trade notes yet.</td></tr></tbody>
-          </table></div>
+          <div class="tiny" style="margin:8px 0 4px">Trade Notes (Reason Only)</div>
+          <div id="tradeNotes" class="tiny" style="background:#0b1326;border:1px solid #1c2a45;border-radius:10px;padding:8px;max-height:140px;overflow:auto">No trade notes yet.</div>
           </div>
         </div>
       </article>
@@ -149,7 +146,7 @@
     const tb = $('tradeBook'); if(!tb) return;
     if(!tradeHistory.length){
       tb.innerHTML = '<tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
-      const notesBody = $('tradeNotesBody'); if(notesBody) notesBody.innerHTML = '<tr><td colspan="11" class="tiny">No trade notes yet.</td></tr>';
+      const notes = $('tradeNotes'); if(notes) notes.innerHTML = 'No trade notes yet.';
       return;
     }
 
@@ -170,9 +167,9 @@
 
     tb.innerHTML = rows.map(x=>`<tr><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${x.r.price? x.r.price.toFixed(2):'-'}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.pnlCls}">${x.pnlText}</td></tr>`).join('');
 
-    const notesBody = $('tradeNotesBody');
-    if(notesBody){
-      notesBody.innerHTML = rows.map(x=>`<tr><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${x.r.price? x.r.price.toFixed(2):'-'}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.pnlCls}">${x.pnlText}</td><td>${x.r.reason||'-'}</td></tr>`).join('');
+    const notes = $('tradeNotes');
+    if(notes){
+      notes.innerHTML = rows.map(x=>`[${x.i+1}] ${x.r.reason || '-'}`).join('<br>') || 'No trade notes yet.';
     }
   }
 
@@ -491,7 +488,7 @@
       priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
       chartTf: '5m'
     };
-    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('tradeNotesBody')) $('tradeNotesBody').innerHTML='<tr><td colspan="11" class="tiny">No trade notes yet.</td></tr>';
+    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="10" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('tradeNotes')) $('tradeNotes').innerHTML='No trade notes yet.';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('upnl').textContent='$0.00'; $('marginUsed').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
     renderBalance(state.balance); updateFocusKpis();
