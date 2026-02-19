@@ -38,8 +38,8 @@
     .tradeTable th{color:#9fb0d6;font-weight:600}
     .tradeTable thead th{position:sticky;top:0;background:#0f172b;z-index:1}
     .tradeTable th:nth-child(1){width:90px}.tradeTable th:nth-child(2){width:70px}.tradeTable th:nth-child(3){width:70px}.tradeTable th:nth-child(4){width:95px}.tradeTable th:nth-child(5){width:90px}.tradeTable th:nth-child(6){width:95px}.tradeTable th:nth-child(7){width:auto}
-    .hlcrop{width:100%;height:360px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative;margin-bottom:10px}
-    .hlframe{width:100%;height:760px;border:0;transform:translateY(-180px);pointer-events:none}
+    .hlcrop{width:100%;height:520px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative;margin-bottom:10px}
+    .hlframe{width:100%;height:900px;border:0;transform:translateY(-80px);pointer-events:auto}
         @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
     @media(max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
@@ -60,7 +60,7 @@
 
     <section class="grid">
       <article class="card">
-        <div class="head"><b>Live Coin Chart + Order Book</b><span id="updated" class="sub" style="margin:0">syncing...</span></div>
+        <div class="head"><b>Live Coin Chart + Order Book</b><span id="updated" class="sub" style="margin:0">interactive chart enabled</span></div>
         <div class="body">
                     <div class="hlcrop"><iframe id="hlChart" class="hlframe" src="https://app.hyperliquid.xyz/trade/BTC" loading="lazy" referrerpolicy="no-referrer"></iframe></div>
           <div class="split" style="margin-top:12px">
