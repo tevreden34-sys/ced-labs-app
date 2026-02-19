@@ -456,7 +456,7 @@
     log('State reset to initial 10,000 USDT balance.');
   };
 
-  $('symbol').onchange = ()=>{ log('Focus symbol -> '+$('symbol').value); updateFocusKpis(); refreshFocusedMarketView(); };
+  $('symbol').onchange = ()=>{ updateFocusKpis(); refreshFocusedMarketView(); };
 
 
   document.addEventListener('click', (e) => {
@@ -473,7 +473,6 @@
   $('levVal').textContent = '10x';
   refreshFocusedMarketView();
   marketTimer = setInterval(refreshFocusedMarketView, 1000);
-  log('Paper mode active. Multi-pair enabled: opens independent positions on BTC/ETH/SOL/BNB using same rules.');
 })();
 </script>
 </body>
