@@ -86,7 +86,7 @@
         <div class="body">
           <div class="controls" style="margin-bottom:10px">
             <select id="symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option></select>
-            <select id="interval"><option value="1m">1m</option><option value="5m" selected>5m</option><option value="15m">15m</option></select>
+            <label class="tiny">Auto TF: <span id="tfVal">-</span></label>
             <label class="tiny">Auto Lev: <span id="levVal">-</span></label>
             <button id="start">Start 30m</button>
             <button id="stop">Stop</button>
@@ -116,7 +116,7 @@
   let countdownTimer = null;
   let tradeHistory = [];
 
-  let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10 };
+  let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10, autoTf: '5m' };
 
   const chart = new Chart($('equityChart').getContext('2d'), {
     type: 'line',
@@ -158,6 +158,23 @@
     if(rv > 75 || rv < 25) lev = Math.max(5, Math.floor(lev * 0.7));
     lev = Math.max(5, Math.min(50, Math.round(lev)));
     return lev;
+  }
+
+  function pickBestTimeframe(dataByTf){
+    const tfs = ['1m','5m','15m'];
+    let best = {tf:'5m', score:-1e9};
+    for(const tf of tfs){
+      const close = dataByTf[tf];
+      if(!close || close.length < 60) continue;
+      const e20 = ema(close.slice(-80),20), e50 = ema(close.slice(-120),50), rv = rsi(close,14);
+      const tail = close.slice(-30); const hi=Math.max(...tail), lo=Math.min(...tail);
+      const volPct = ((hi-lo)/Math.max(1e-9,lo))*100;
+      const trend = Math.abs((e20-e50)/Math.max(1e-9,e50))*100;
+      const momentum = Math.abs(rv-50)/50;
+      const score = trend*1.4 + momentum*0.8 - volPct*0.25;
+      if(score > best.score) best = {tf, score};
+    }
+    return best.tf;
   }
 
   function renderBalance(){ $('balance').textContent = fmt(state.balance); }
@@ -252,17 +269,30 @@
 
   async function tick(){
     if(!running) return;
-    const sym=$('symbol').value, intv=$('interval').value;
+    const sym=$('symbol').value;
     try{
-      const [kRes, pRes] = await Promise.all([
-        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${intv}&limit=140`, {cache:'no-store'}),
+      const [k1, k5, k15, pRes] = await Promise.all([
+        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1m&limit=140`, {cache:'no-store'}),
+        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=5m&limit=140`, {cache:'no-store'}),
+        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=15m&limit=140`, {cache:'no-store'}),
         fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`, {cache:'no-store'}),
       ]);
       fetchOrderBook(sym);
-      if(!kRes.ok || !pRes.ok) throw new Error('market fetch failed');
-      const kl = await kRes.json();
+      if(!k1.ok || !k5.ok || !k15.ok || !pRes.ok) throw new Error('market fetch failed');
+      const kl1 = await k1.json();
+      const kl5 = await k5.json();
+      const kl15 = await k15.json();
       const pt = await pRes.json();
-      const close = kl.map(c=>Number(c[4]));
+      const byTf = {
+        '1m': kl1.map(c=>Number(c[4])),
+        '5m': kl5.map(c=>Number(c[4])),
+        '15m': kl15.map(c=>Number(c[4]))
+      };
+      const pickedTf = pickBestTimeframe(byTf);
+      if(state.autoTf !== pickedTf){ log(`Auto TF switched ${state.autoTf} -> ${pickedTf}`); }
+      state.autoTf = pickedTf;
+      $('tfVal').textContent = pickedTf;
+      const close = byTf[pickedTf];
       const px = Number(pt.price);
       const e20 = ema(close.slice(-80),20);
       const e50 = ema(close.slice(-120),50);
@@ -276,7 +306,7 @@
       const autoLev = chooseLeverage(close, rv, e20, e50);
       state.autoLev = autoLev;
       $('levVal').textContent = autoLev + "x";
-      const reason = `EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}, autoLev ${autoLev}x`;
+      const reason = `TF ${state.autoTf}, EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}, autoLev ${autoLev}x`;
 
       if(sig==='BUY'){
         if(state.side==='SHORT') closePosition(px, `trend flip bullish | ${reason}`);
@@ -337,7 +367,7 @@
   };
   $('reset').onclick = () => {
     stopBot('reset');
-    state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10 };
+    state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false, autoLev: 10, autoTf: '5m' };
     tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-'; renderBalance();
@@ -345,9 +375,9 @@
   };
 
   $('symbol').onchange = ()=> log('Symbol -> '+$('symbol').value);
-  $('interval').onchange = ()=> log('Interval -> '+$('interval').value);
   renderBalance();
   $('levVal').textContent = state.autoLev + 'x';
+  $('tfVal').textContent = state.autoTf;
   log('Paper mode active. Aggressive-safe TP logic: +1.5R take 85%, then SL moved to breakeven.');
 })();
 </script>
