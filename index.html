@@ -14,7 +14,7 @@
     .card{background:linear-gradient(180deg,var(--card),#0f1627);border:1px solid var(--line);border-radius:16px;overflow:hidden}
     .head{padding:12px 14px;border-bottom:1px solid #1f2b45;display:flex;justify-content:space-between;align-items:center}
     .body{padding:12px 14px}
-    .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin-bottom:14px}
     .kpi{background:#0f172b;border:1px solid #22314f;border-radius:12px;padding:10px}
     .kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-weight:700;font-size:18px;margin-top:4px}
     .up{color:var(--green)} .down{color:var(--red)} .warn{color:var(--yellow)}
@@ -56,6 +56,7 @@
       <div class="kpi"><div class="l">Balance</div><div class="v" id="balance">$10,000.00</div></div>
       <div class="kpi"><div class="l">Paper PnL</div><div class="v" id="pnl">$0.00</div></div>
       <div class="kpi"><div class="l">Unrealized PnL</div><div class="v" id="upnl">$0.00</div></div>
+      <div class="kpi"><div class="l">Margin in Use</div><div class="v" id="marginUsed">$0.00</div></div>
           </div>
 
     <section class="grid">
@@ -249,6 +250,16 @@
     return u;
   }
 
+  function calcMarginInUse(){
+    let m = 0;
+    for(const sym of TRADE_SYMBOLS){
+      const p = state.positions[sym];
+      if(!p) continue;
+      m += Number(p.margin || 0);
+    }
+    return m;
+  }
+
 
   function openPosition(sym, side, px, reason, lev, allocPct){
     if(state.positions[sym]) return;
@@ -256,7 +267,7 @@
     const notional = margin * lev;
     const qty = notional / px;
     const oneR = px * RISK_PCT;
-    const pos = { side, qty, entry:px, lev, allocPct, tp1Hit:false, sl:0, tp1:0 };
+    const pos = { side, qty, entry:px, lev, allocPct, margin, tp1Hit:false, sl:0, tp1:0 };
     if(side==='LONG'){ pos.sl=px-oneR; pos.tp1=px+(oneR*TP1_R); }
     else { pos.sl=px+oneR; pos.tp1=px-(oneR*TP1_R); }
     state.positions[sym]=pos;
@@ -400,6 +411,8 @@
       $('pnl').className = 'v '+(pnl>=0?'up':'down');
       $('upnl').textContent = (upnl>=0?'+':'') + fmt(upnl);
       $('upnl').className = 'v '+(upnl>=0?'up':'down');
+      $('marginUsed').textContent = fmt(calcMarginInUse());
+      $('marginUsed').className = 'v warn';
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
     }catch(e){
       // silent retry
@@ -454,7 +467,7 @@
     };
     tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="8" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
-    $('pnl').textContent='$0.00'; $('upnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
+    $('pnl').textContent='$0.00'; $('upnl').textContent='$0.00'; $('marginUsed').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
     renderBalance(state.balance); updateFocusKpis();
     log('State reset to initial 10,000 USDT balance.');
   };
@@ -464,6 +477,7 @@
   renderBalance(state.balance);
   $('tfVal').textContent = '5m';
   $('levVal').textContent = '10x';
+  if($('marginUsed')) $('marginUsed').textContent = '$0.00';
   refreshFocusedMarketView();
   marketTimer = setInterval(refreshFocusedMarketView, 1000);
 })();
