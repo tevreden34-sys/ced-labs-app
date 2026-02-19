@@ -148,7 +148,7 @@
   });
 
   function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
-  function log(msg){ /* log panel removed */ }
+  function log(msg){ return; }
   function ema(arr, p){ const k=2/(p+1); let v=arr[0]; for(let i=1;i<arr.length;i++) v=arr[i]*k+v*(1-k); return v; }
   function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
 
@@ -396,7 +396,7 @@
       $('pnl').className = 'v '+(pnl>=0?'up':'down');
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
     }catch(e){
-      log('Data issue -> retrying in 1s');
+      // silent retry
     }
     tickTimer = setTimeout(tick, 1000);
   }
