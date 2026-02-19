@@ -19,6 +19,8 @@
     .kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-weight:700;font-size:18px;margin-top:4px}
     .up{color:var(--green)} .down{color:var(--red)} .warn{color:var(--yellow)}
     .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .tfbtn{padding:4px 8px;font-size:11px;border-radius:8px;border:1px solid #2d3d61;background:#111a30;color:#cfe0ff;cursor:pointer}
+    .tfbtn.active{background:#1e3258;border-color:#4d76b8;color:#fff}
     select,button,input[type=range]{background:#111a30;color:var(--text);border:1px solid #2d3d61;border-radius:10px;padding:8px 10px}
     button{cursor:pointer}
     .danger{background:#3a0f1a;border-color:#7a2137;color:#ffdce5}
@@ -36,9 +38,7 @@
     .tradeTable th,.tradeTable td{padding:5px 6px;border-bottom:1px solid #1c2a45;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .tradeTable th{color:#9fb0d6;font-weight:600}
     .tradeTable th:nth-child(1){width:90px}.tradeTable th:nth-child(2){width:70px}.tradeTable th:nth-child(3){width:70px}.tradeTable th:nth-child(4){width:95px}.tradeTable th:nth-child(5){width:90px}.tradeTable th:nth-child(6){width:95px}.tradeTable th:nth-child(7){width:auto}
-    .hlcrop{width:100%;height:360px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative}
-    .hlframe{width:100%;height:760px;border:0;transform:translateY(-180px);pointer-events:none}
-    @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
+        @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
     @media(max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
 </head>
@@ -60,24 +60,30 @@
       <article class="card">
         <div class="head"><b>Live Coin Chart + Order Book</b><span id="updated" class="sub" style="margin:0">syncing...</span></div>
         <div class="body">
-          <div class="hlcrop" style="margin-bottom:10px"><iframe id="hlChart" class="hlframe" src="https://app.hyperliquid.xyz/trade/BTC" loading="lazy" referrerpolicy="no-referrer"></iframe></div>
-                    <div class="split" style="margin-top:12px">
+          <div class="controls" style="margin-bottom:8px">
+            <span class="tiny">Chart TF:</span>
+            <button class="tfbtn" data-charttf="1m">1m</button>
+            <button class="tfbtn active" data-charttf="5m">5m</button>
+            <button class="tfbtn" data-charttf="15m">15m</button>
+          </div>
+          <canvas id="marketChart" height="120"></canvas>
+          <div class="split" style="margin-top:12px">
             <div class="bookCol">
-              <h4>Asks</h4>
+              <h4>Asks (Top 5)</h4>
               <table class="bookTable" id="asks"></table>
             </div>
             <div class="bookCol">
-              <h4>Bids</h4>
+              <h4>Bids (Top 5)</h4>
               <table class="bookTable" id="bids"></table>
             </div>
-                    <div class="tradeWrap">
+          </div>
+          <div class="tradeWrap">
             <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Trade Book</h4>
             <div class="tradeScroller"><table class="tradeTable">
               <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Price</th><th>Qty</th><th>PnL</th><th>Why</th></tr></thead>
               <tbody id="tradeBook"></tbody>
             </table></div>
           </div>
-</div>
         </div>
       </article>
 
@@ -126,13 +132,20 @@
     autoTfBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'5m'])),
     autoLevBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,10])),
     signalBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'HOLD'])),
-    priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0]))
+    priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
+    chartTf: '5m'
   };
 
   const chart = new Chart($('equityChart').getContext('2d'), {
     type: 'line',
     data: { labels: state.labels, datasets: [{ label: 'Equity', data: state.equity, borderColor: '#5aa8ff', backgroundColor: 'rgba(90,168,255,.15)', fill: true, tension: .25, pointRadius: 0 }]},
     options: { responsive: true, plugins: { legend: { display:false }}, scales: { x: { display:false }, y: { ticks: { color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
+  });
+
+  const marketChart = new Chart($('marketChart').getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: 'Market', data: [], borderColor: '#19c37d', backgroundColor:'rgba(25,195,125,.12)', fill:true, tension:.2, pointRadius:0 }]},
+    options: { responsive:true, plugins:{ legend:{ display:false }}, scales:{ x:{ display:false }, y:{ ticks:{ color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
   });
 
   function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -148,13 +161,6 @@
   }
 
   function renderBalance(){ $('balance').textContent = fmt(state.balance); }
-
-  function updateHlChartSrc(){
-    const sym = $('symbol').value || 'BTCUSDT';
-    const base = sym.replace('USDT','');
-    const frame = $('hlChart');
-    if(frame) frame.src = `https://app.hyperliquid.xyz/trade/${base}`;
-  }
 
   function renderOrderBook(book){
     const asks = (book.asks || []).slice(0,5);
@@ -311,6 +317,14 @@
     const tf = pickBestTimeframe(byTf);
     state.autoTfBySym[sym] = tf;
     const close = byTf[tf];
+
+    if(sym === $('symbol').value){
+      const chartTf = state.chartTf || '5m';
+      const series = byTf[chartTf] || close;
+      marketChart.data.labels = series.map((_,i)=>i);
+      marketChart.data.datasets[0].data = series;
+      marketChart.update('none');
+    }
     const e20 = ema(close.slice(-80),20), e50 = ema(close.slice(-120),50), rv = rsi(close,14);
     const autoLev = chooseLeverage(close, rv, e20, e50);
     const allocPct = chooseAllocationPct(close, rv, e20, e50);
@@ -340,7 +354,6 @@
     try{
       await Promise.all(TRADE_SYMBOLS.map(processSymbol));
       fetchOrderBook($('symbol').value);
-  updateHlChartSrc();
 
       const eq = calcEquity();
       state.equity.push(eq); state.labels.push(new Date().toLocaleTimeString());
@@ -412,13 +425,21 @@
     log('State reset to initial 10,000 USDT balance.');
   };
 
-  $('symbol').onchange = ()=>{ log('Focus symbol -> '+$('symbol').value); updateFocusKpis(); fetchOrderBook($('symbol').value); updateHlChartSrc(); };
+  $('symbol').onchange = ()=>{ log('Focus symbol -> '+$('symbol').value); updateFocusKpis(); fetchOrderBook($('symbol').value); };
+
+
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-charttf]');
+    if(!b) return;
+    state.chartTf = b.dataset.charttf;
+    document.querySelectorAll('[data-charttf]').forEach(x=>x.classList.toggle('active', x.dataset.charttf===state.chartTf));
+    updateFocusKpis();
+  });
 
   renderBalance();
   $('tfVal').textContent = '5m';
   $('levVal').textContent = '10x';
   fetchOrderBook($('symbol').value);
-  updateHlChartSrc();
   log('Paper mode active. Multi-pair enabled: opens independent positions on BTC/ETH/SOL/BNB using same rules.');
 })();
 </script>
