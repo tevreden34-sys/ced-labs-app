@@ -194,6 +194,7 @@
       if((state.side === 'LONG' && px >= state.tp1) || (state.side === 'SHORT' && px <= state.tp1)) takePartial(px);
     }
     if((state.side === 'LONG' && px <= state.sl) || (state.side === 'SHORT' && px >= state.sl)){
+      log(`STOP TRIGGER ${state.side} | price ${px.toFixed(2)} touched SL ${state.sl.toFixed(2)}`);
       closePosition(px, state.tp1Hit ? 'breakeven stop after TP1' : '-1R stop loss hit');
     }
   }
@@ -202,14 +203,16 @@
     if(!running) return;
     const sym=$('symbol').value, intv=$('interval').value;
     try{
-      const [kRes] = await Promise.all([
+      const [kRes, pRes] = await Promise.all([
         fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${intv}&limit=140`, {cache:'no-store'}),
-        fetchOrderBook(sym)
+        fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`, {cache:'no-store'}),
       ]);
-      if(!kRes.ok) throw new Error('market fetch failed');
+      fetchOrderBook(sym);
+      if(!kRes.ok || !pRes.ok) throw new Error('market fetch failed');
       const kl = await kRes.json();
+      const pt = await pRes.json();
       const close = kl.map(c=>Number(c[4]));
-      const px = close.at(-1);
+      const px = Number(pt.price);
       const e20 = ema(close.slice(-80),20);
       const e50 = ema(close.slice(-120),50);
       const rv = rsi(close,14);
