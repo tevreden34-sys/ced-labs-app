@@ -184,6 +184,18 @@
     return Math.max(5,Math.min(50,Math.round(lev)));
   }
 
+  function chooseAllocationPct(close, rv, e20, e50){
+    const tail = close.slice(-30), hi=Math.max(...tail), lo=Math.min(...tail);
+    const volPct=((hi-lo)/Math.max(1e-9,lo))*100;
+    const trendStrength=Math.abs((e20-e50)/Math.max(1e-9,e50))*100;
+    let pct = 0.05; // default 5%
+    if(trendStrength > 0.22 && volPct < 0.8) pct = 0.12;
+    else if(trendStrength > 0.14 && volPct < 1.2) pct = 0.08;
+    else if(volPct > 2.2) pct = 0.03;
+    if(rv > 78 || rv < 22) pct *= 0.7;
+    return Math.max(0.02, Math.min(0.15, pct));
+  }
+
   function pickBestTimeframe(dataByTf){
     const tfs=['1m','5m','15m']; let best={tf:'5m',score:-1e9};
     for(const tf of tfs){
@@ -211,18 +223,19 @@
     return eq;
   }
 
-  function openPosition(sym, side, px, reason, lev){
+  function openPosition(sym, side, px, reason, lev, allocPct){
     if(state.positions[sym]) return;
-    const margin = state.balance * 0.10;
+    const margin = state.balance * allocPct;
     const notional = margin * lev;
     const qty = notional / px;
     const oneR = px * RISK_PCT;
-    const pos = { side, qty, entry:px, lev, tp1Hit:false, sl:0, tp1:0 };
+    const pos = { side, qty, entry:px, lev, allocPct, tp1Hit:false, sl:0, tp1:0 };
     if(side==='LONG'){ pos.sl=px-oneR; pos.tp1=px+(oneR*TP1_R); }
     else { pos.sl=px+oneR; pos.tp1=px-(oneR*TP1_R); }
     state.positions[sym]=pos;
     state.trades++;
-    log(`OPEN ${side} ${sym} @ ${px.toFixed(2)} | lev ${lev}x | qty ${qty.toFixed(4)} | SL ${pos.sl.toFixed(2)} | TP1 ${pos.tp1.toFixed(2)} | ${reason}`);
+    const notionalUsd = qty * px;
+    log(`OPEN ${side} ${sym} @ ${px.toFixed(2)} | lev ${lev}x | size ${qty.toFixed(4)} ${sym.replace('USDT','')} (${fmt(notionalUsd)}) | alloc ${(allocPct*100).toFixed(1)}% | SL ${pos.sl.toFixed(2)} | TP1 ${pos.tp1.toFixed(2)} | ${reason}`);
     addTrade('OPEN', sym, side, px, qty, 0, reason);
   }
 
@@ -232,7 +245,8 @@
     const pnl = p.side==='LONG' ? (px-p.entry)*p.qty : (p.entry-px)*p.qty;
     state.balance += pnl;
     renderBalance();
-    log(`CLOSE ${p.side} ${sym} @ ${px.toFixed(2)} | pnl ${pnl>=0?'+':''}${fmt(pnl)} | new balance ${fmt(state.balance)} | ${reason}`);
+    const closeNotional = p.qty * px;
+    log(`CLOSE ${p.side} ${sym} @ ${px.toFixed(2)} | closed ${p.qty.toFixed(4)} ${sym.replace('USDT','')} (${fmt(closeNotional)}) | pnl ${pnl>=0?'+':''}${fmt(pnl)} | new balance ${fmt(state.balance)} | ${reason}`);
     addTrade('CLOSE', sym, p.side, px, p.qty, pnl, reason);
     delete state.positions[sym];
     state.trades++;
@@ -247,7 +261,8 @@
     p.tp1Hit = true;
     p.sl = p.entry;
     renderBalance();
-    log(`TP1 HIT ${sym} @ ${px.toFixed(2)} | closed 85% (${closeQty.toFixed(4)}) | realized ${pnl>=0?'+':''}${fmt(pnl)} | SL -> BE`);
+    const partialNotional = closeQty * px;
+    log(`TP1 HIT ${sym} @ ${px.toFixed(2)} | closed 85% (${closeQty.toFixed(4)} ${sym.replace('USDT','')} / ${fmt(partialNotional)}) | realized ${pnl>=0?'+':''}${fmt(pnl)} | SL -> BE`);
     addTrade('TP1', sym, p.side, px, closeQty, pnl, 'Take 85% at 1.5R');
   }
 
@@ -291,6 +306,7 @@
     const close = byTf[tf];
     const e20 = ema(close.slice(-80),20), e50 = ema(close.slice(-120),50), rv = rsi(close,14);
     const autoLev = chooseLeverage(close, rv, e20, e50);
+    const allocPct = chooseAllocationPct(close, rv, e20, e50);
     state.autoLevBySym[sym] = autoLev;
 
     managePosition(sym, px);
@@ -300,15 +316,15 @@
     if(e20<e50 && rv<47) sig='SELL';
     state.signalBySym[sym]=sig;
 
-    const reason = `TF ${tf}, EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}, autoLev ${autoLev}x`;
+    const reason = `TF ${tf}, EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}, autoLev ${autoLev}x, alloc ${(allocPct*100).toFixed(1)}%`; 
     const pos = state.positions[sym];
 
     if(sig==='BUY'){
       if(pos && pos.side==='SHORT') closePosition(sym, px, `trend flip bullish | ${reason}`);
-      if(!state.positions[sym]) openPosition(sym, 'LONG', px, reason, autoLev);
+      if(!state.positions[sym]) openPosition(sym, 'LONG', px, reason, autoLev, allocPct);
     } else if(sig==='SELL'){
       if(pos && pos.side==='LONG') closePosition(sym, px, `trend flip bearish | ${reason}`);
-      if(!state.positions[sym]) openPosition(sym, 'SHORT', px, reason, autoLev);
+      if(!state.positions[sym]) openPosition(sym, 'SHORT', px, reason, autoLev, allocPct);
     }
   }
 
