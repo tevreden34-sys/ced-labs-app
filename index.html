@@ -82,7 +82,7 @@
             <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Trade Book</h4>
             <div class="tradeScroller"><table class="tradeTable">
               <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Price</th><th>Qty</th><th>PnL</th><th>Why</th></tr></thead>
-              <tbody id="tradeBook"></tbody>
+              <tbody id="tradeBook"><tr><td colspan="7" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
             </table></div>
           </div>
         </div>
@@ -122,6 +122,7 @@
   let startAt = 0;
   let tickTimer = null;
   let countdownTimer = null;
+  let marketTimer = null;
   let tradeHistory = [];
 
   let state = {
@@ -298,6 +299,35 @@
     $('tfVal').textContent = state.autoTfBySym[sym] || '5m';
   }
 
+  async function refreshFocusedMarketView(){
+    const sym = $('symbol').value;
+    const tf = state.chartTf || '5m';
+    try{
+      const [kRes,pRes,bRes] = await Promise.all([
+        fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${tf}&limit=140`, {cache:'no-store'}),
+        fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}`, {cache:'no-store'}),
+        fetch(`https://api.binance.com/api/v3/depth?symbol=${sym}&limit=10`, {cache:'no-store'})
+      ]);
+      if(!kRes.ok || !pRes.ok || !bRes.ok) throw new Error('market view fetch failed');
+      const kl = await kRes.json();
+      const series = kl.map(c=>Number(c[4]));
+      const px = Number((await pRes.json()).price);
+      const book = await bRes.json();
+
+      marketChart.data.labels = series.map((_,i)=>i);
+      marketChart.data.datasets[0].data = series;
+      marketChart.update('none');
+
+      state.priceBySym[sym] = px;
+      renderOrderBook(book);
+      updateFocusKpis();
+    refreshFocusedMarketView();
+      $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
+    }catch(e){
+      // keep UI stable
+    }
+  }
+
   async function processSymbol(sym){
     const [k1,k5,k15,pRes] = await Promise.all([
       fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=1m&limit=140`, {cache:'no-store'}),
@@ -419,14 +449,14 @@
       signalBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'HOLD'])),
       priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0]))
     };
-    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='';
+    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="7" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
     renderBalance(); updateFocusKpis();
     log('State reset to initial 10,000 USDT balance.');
   };
 
-  $('symbol').onchange = ()=>{ log('Focus symbol -> '+$('symbol').value); updateFocusKpis(); fetchOrderBook($('symbol').value); };
+  $('symbol').onchange = ()=>{ log('Focus symbol -> '+$('symbol').value); updateFocusKpis(); refreshFocusedMarketView(); };
 
 
   document.addEventListener('click', (e) => {
@@ -435,12 +465,14 @@
     state.chartTf = b.dataset.charttf;
     document.querySelectorAll('[data-charttf]').forEach(x=>x.classList.toggle('active', x.dataset.charttf===state.chartTf));
     updateFocusKpis();
+    refreshFocusedMarketView();
   });
 
   renderBalance();
   $('tfVal').textContent = '5m';
   $('levVal').textContent = '10x';
-  fetchOrderBook($('symbol').value);
+  refreshFocusedMarketView();
+  marketTimer = setInterval(refreshFocusedMarketView, 1000);
   log('Paper mode active. Multi-pair enabled: opens independent positions on BTC/ETH/SOL/BNB using same rules.');
 })();
 </script>
