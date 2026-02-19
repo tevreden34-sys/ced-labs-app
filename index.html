@@ -14,7 +14,7 @@
     .card{background:linear-gradient(180deg,var(--card),#0f1627);border:1px solid var(--line);border-radius:16px;overflow:hidden}
     .head{padding:12px 14px;border-bottom:1px solid #1f2b45;display:flex;justify-content:space-between;align-items:center}
     .body{padding:12px 14px}
-    .kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
     .kpi{background:#0f172b;border:1px solid #22314f;border-radius:12px;padding:10px}
     .kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-weight:700;font-size:18px;margin-top:4px}
     .up{color:var(--green)} .down{color:var(--red)} .warn{color:var(--yellow)}
@@ -56,8 +56,7 @@
       <div class="kpi"><div class="l">Balance</div><div class="v" id="balance">$10,000.00</div></div>
       <div class="kpi"><div class="l">Paper PnL</div><div class="v" id="pnl">$0.00</div></div>
       <div class="kpi"><div class="l">Unrealized PnL</div><div class="v" id="upnl">$0.00</div></div>
-      <div class="kpi"><div class="l">Time left</div><div class="v" id="timeLeft">15:00</div></div>
-    </div>
+          </div>
 
     <section class="grid">
       <article class="card">
@@ -85,7 +84,7 @@
             <select id="symbol"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option></select>
             <label class="tiny">Auto TF: <span id="tfVal">-</span></label>
             <label class="tiny">Auto Lev (5-70x): <span id="levVal">-</span></label>
-            <button id="start">Start 30m</button>
+            <button id="start">Start</button>
             <button id="stop">Stop</button>
             <button id="panic" class="danger">Panic Sell</button>
             <button id="reset">Reset</button>
@@ -107,16 +106,13 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const RUN_MS = 30 * 60 * 1000;
   const RISK_PCT = 0.01;
   const TP1_R = 1.5;
   const TP1_CLOSE = 0.85;
   const TRADE_SYMBOLS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT'];
 
   let running = false;
-  let startAt = 0;
   let tickTimer = null;
-  let countdownTimer = null;
   let marketTimer = null;
   let tradeHistory = [];
 
@@ -182,15 +178,6 @@
       const d = await r.json();
       renderOrderBook(d);
     } catch {}
-  }
-
-  function updateTimeLeft(){
-    if(!running) { $('timeLeft').textContent = '30:00'; return; }
-    const left = Math.max(0, RUN_MS - (Date.now() - startAt));
-    const m = Math.floor(left/60000).toString().padStart(2,'0');
-    const s = Math.floor((left%60000)/1000).toString().padStart(2,'0');
-    $('timeLeft').textContent = `${m}:${s}`;
-    if(left <= 0) stopBot('30m run completed');
   }
 
   function chooseLeverage(close, rv, e20, e50){
@@ -416,20 +403,19 @@
   function startBot(){
     if(running) return;
     running = true;
-    startAt = Date.now();
     clearTimeout(tickTimer);
-    clearInterval(countdownTimer);
-    countdownTimer = setInterval(updateTimeLeft, 1000);
-    updateTimeLeft();
-    log(`Run started for 30 minutes | initial balance ${fmt(state.balance)} | mode: multi-pair (${TRADE_SYMBOLS.join(', ')})`);
+    log(`Bot started | initial balance ${fmt(state.balance)} | mode: multi-pair (${TRADE_SYMBOLS.join(', ')})`);
     tick();
   }
 
   function stopBot(msg='stopped manually'){
     running = false;
     clearTimeout(tickTimer);
-    clearInterval(countdownTimer);
-    updateTimeLeft();
+    const openSyms = Object.keys(state.positions);
+    for(const sym of openSyms){
+      const px = state.priceBySym[sym] || state.positions[sym].entry;
+      closePosition(sym, px, 'Stop pressed: forced close');
+    }
     log(`Bot ${msg}`);
   }
 
