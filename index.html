@@ -185,7 +185,7 @@
     tb.innerHTML = rows.map(x=>{
       const rowCls = x.r.status==='CLOSED' ? 'closedRow' : '';
       const pxCell = (x.r.status==='CLOSED' && x.r.closePrice) ? x.r.closePrice.toFixed(2) : (x.r.price ? x.r.price.toFixed(2) : '-');
-      return `<tr class="${rowCls}"><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td class="${x.pnlCls} keepPnl">${x.pnlText}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${pxCell}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.upnlCls}">${x.upnlText}</td></tr>`;
+      return `<tr class="${rowCls}"><td>${x.i+1}</td><td>${x.r.status==='CLOSED' && x.r.tClose ? `${x.r.t} / ${x.r.tClose}` : x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td class="${x.pnlCls} keepPnl">${x.pnlText}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${pxCell}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.upnlCls}">${x.upnlText}</td></tr>`;
     }).join('');
 
   }
