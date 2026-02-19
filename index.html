@@ -30,7 +30,8 @@
     .bookTable td{padding:4px 6px;border-bottom:1px solid #1c2a45}
     .bookTable td:last-child{text-align:right}
     .ask td{color:#ff9bae}.bid td{color:#8effc8}
-    .hlframe{width:100%;height:320px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326}
+    .hlcrop{width:100%;height:320px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative}
+    .hlframe{width:100%;height:760px;border:0;transform:translateY(-180px);pointer-events:none}
     @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
     @media(max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
@@ -82,7 +83,7 @@
           <div class="tiny" style="margin-bottom:8px">Logs include entry reason, -1R SL, TP1 at +2.5R (70% close), then SL moved to breakeven.</div>
           <div class="log" id="log"></div>
           <div class="tiny" style="margin:10px 0 6px">Hyperliquid Chart</div>
-          <iframe id="hlChart" class="hlframe" src="https://app.hyperliquid.xyz/trade/BTC" loading="lazy" referrerpolicy="no-referrer"></iframe>
+          <div class="hlcrop"><iframe id="hlChart" class="hlframe" src="https://app.hyperliquid.xyz/trade/BTC" loading="lazy" referrerpolicy="no-referrer"></iframe></div>
         </div>
       </article>
     </section>
