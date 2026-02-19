@@ -62,12 +62,7 @@
         <div class="head"><b>Live Coin Chart + Order Book</b><span id="updated" class="sub" style="margin:0">interactive chart enabled</span></div>
         <div class="body">
                     <div class="hlcrop"><iframe id="hlChart" class="hlframe" src="https://app.hyperliquid.xyz/trade/BTC" loading="lazy" referrerpolicy="no-referrer"></iframe></div>
-          <div class="split" style="margin-top:12px;grid-template-columns:1fr">
-            <div class="bookCol">
-              <h4>Position Bias (Long vs Short)</h4>
-              <canvas id="biasChart" height="130"></canvas>
-            </div>
-          </div>
+          <div class="tiny" style="margin-top:8px">Live chart area only.</div>
 
         </div>
       </article>
@@ -92,7 +87,13 @@
               <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>PnL</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>uPnL</th></tr></thead>
               <tbody id="tradeBook"><tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
             </table></div>
-          
+            <div class="tradeWrap" style="margin-top:10px">
+              <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Balance Ledger</h4>
+              <div class="tradeScroller" style="max-height:180px"><table class="tradeTable">
+                <thead><tr><th>#</th><th>Pair</th><th>Trade P/L</th><th>Start Bal</th><th>End Bal</th><th>Result</th></tr></thead>
+                <tbody id="balanceLedger"><tr><td colspan="6" class="tiny">No closed trades yet.</td></tr></tbody>
+              </table></div>
+            </div>
           </div>
         </div>
       </article>
@@ -122,9 +123,7 @@
     autoLevBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,10])),
     signalBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'HOLD'])),
     priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
-    chartTf: '5m',
-    longCount: 0,
-    shortCount: 0
+    chartTf: '5m'
   };
 
   const chart = new Chart($('equityChart').getContext('2d'), {
@@ -133,31 +132,30 @@
     options: { responsive: true, plugins: { legend: { display:false }}, scales: { x: { display:false }, y: { ticks: { color:'#9fb0d6' }, grid:{ color:'rgba(255,255,255,.06)' }}}}
   });
 
-  const biasChart = new Chart($('biasChart').getContext('2d'), {
-    type: 'doughnut',
-    data: {
-      labels: ['Longs', 'Shorts'],
-      datasets: [{
-        data: [0, 0],
-        backgroundColor: ['#19c37d', '#ff5d7a'],
-        borderColor: ['#19c37d', '#ff5d7a'],
-        borderWidth: 1
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { labels: { color: '#9fb0d6' } }
-      }
-    }
-  });
-
   function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function log(msg){ return; }
   function ema(arr, p){ const k=2/(p+1); let v=arr[0]; for(let i=1;i<arr.length;i++) v=arr[i]*k+v*(1-k); return v; }
   function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
 
-  function renderTradeBook(){
+  function renderBalanceLedger(){
+    const el = $('balanceLedger');
+    if(!el) return;
+    const closed = tradeHistory.filter(r => r.status==='CLOSED');
+    if(!closed.length){
+      el.innerHTML = '<tr><td colspan="6" class="tiny">No closed trades yet.</td></tr>';
+      return;
+    }
+    el.innerHTML = closed.map((r, i) => {
+      const pnl = Number(r.pnl || 0);
+      const startBal = Number(r.startBalance || 0);
+      const endBal = Number(r.endBalance || (startBal + pnl));
+      const cls = pnl >= 0 ? 'up' : 'down';
+      const result = pnl >= 0 ? 'WIN' : 'LOSS';
+      return `<tr><td>${i+1}</td><td>${r.symbol}</td><td class="${cls}">${fmt(pnl)}</td><td>${fmt(startBal)}</td><td>${fmt(endBal)}</td><td class="${cls}">${result}</td></tr>`;
+    }).join('');
+  }
+
+function renderTradeBook(){
     const tb = $('tradeBook'); if(!tb) return;
     if(!tradeHistory.length){
       tb.innerHTML = '<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
@@ -205,6 +203,7 @@
           closePrice: _price,
           pnl: _pnl,
           reason: reason || tradeHistory[idx].reason || '-',
+          endBalance: state.balance,
         };
       } else {
         tradeHistory.unshift({
@@ -220,7 +219,9 @@
           usdSize:_price*_qty,
           pnl:_pnl,
           reason:reason||'-',
-          lev:Number(lev||0)
+          lev:Number(lev||0),
+          startBalance: state.balance - _pnl,
+          endBalance: state.balance
         });
       }
     } else {
@@ -241,6 +242,7 @@
 
     if(tradeHistory.length>40) tradeHistory = tradeHistory.slice(0,40);
     renderTradeBook();
+    renderBalanceLedger();
   }
 
 
@@ -398,9 +400,11 @@
       updateFocusKpis();
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
       renderTradeBook();
+      renderBalanceLedger();
     }catch(e){
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
       renderTradeBook();
+      renderBalanceLedger();
       updateFocusKpis();
     }
   }
@@ -450,13 +454,6 @@
     }
   }
 
-
-  function updateBiasChart(){
-    if(!biasChart) return;
-    biasChart.data.datasets[0].data = [state.longCount || 0, state.shortCount || 0];
-    biasChart.update('none');
-  }
-
   async function tick(){
     if(!running) return;
     try{
@@ -471,7 +468,6 @@
       chart.update('none');
 
       updateFocusKpis();
-      updateBiasChart();
       const upnl = calcUnrealizedPnl();
       $('upnl').textContent = (upnl>=0?'+':'') + fmt(upnl);
       $('upnl').className = 'v '+(upnl>=0?'up':'down');
@@ -479,6 +475,7 @@
       $('marginUsed').className = 'v warn';
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
       renderTradeBook();
+      renderBalanceLedger();
     }catch(e){
       // silent retry
     }
@@ -528,14 +525,12 @@
       autoLevBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,10])),
       signalBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,'HOLD'])),
       priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
-      chartTf: '5m',
-      longCount: 0,
-      shortCount: 0
+      chartTf: '5m'
     };
-    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
+    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('balanceLedger')) $('balanceLedger').innerHTML='<tr><td colspan="6" class="tiny">No closed trades yet.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('upnl').textContent='$0.00'; $('marginUsed').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
-    renderBalance(state.balance); updateFocusKpis(); updateBiasChart();
+    renderBalance(state.balance); updateFocusKpis();
     log('State reset to initial 10,000 USDT balance.');
   };
 
