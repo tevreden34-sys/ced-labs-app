@@ -31,6 +31,8 @@
     .sub{margin:4px 0 0;color:var(--muted);font-size:14px}
     .statusbar{display:flex;gap:8px;flex-wrap:wrap}
     .chip{background:var(--panel-2);border:1px solid var(--line);padding:8px 10px;border-radius:999px;font-size:12px;color:var(--muted)}
+    .chip.clickable{cursor:pointer;transition:.2s border-color,.2s transform,.2s color}
+    .chip.clickable:hover{border-color:#3b5a82;color:#cfe1ff;transform:translateY(-1px)}
 
     .grid{display:grid;gap:14px}
     .grid-main{grid-template-columns:1fr}
@@ -85,7 +87,7 @@
       </div>
       <div class="statusbar">
         <div class="chip" id="cgStatus">CoinGecko: connecting…</div>
-        <div class="chip" id="nextTick">Next refresh: 2s</div>
+        <div class="chip clickable" id="nextTick" title="Click to refresh now">Next refresh: 10s</div>
         <div class="chip" id="lastSync">Last sync: --:--:--</div>
       </div>
     </section>
@@ -94,7 +96,7 @@
       <article class="card">
         <div class="card-head">
           <div class="card-title">Top 10 Crypto Market</div>
-          <div class="sub" style="margin:0">Auto refresh target: 2s</div>
+          <div class="sub" style="margin:0">Auto refresh target: 10s</div>
         </div>
         <div class="card-body">
           <div id="tableWrap" class="loading">Loading top 10 assets…</div>
@@ -122,12 +124,19 @@
       const narrativesEl = document.getElementById('narratives');
       const narrativeTick = document.getElementById('narrativeTick');
 
-      const BASE_MS = 2000;
+      const BASE_MS = 10000;
       const MAX_MS = 32000;
       let refreshMs = BASE_MS;
       let pollTimer = null;
       let secTimer = null;
       let countdown = Math.ceil(refreshMs/1000);
+
+      nextTick.addEventListener('click', () => {
+        nextTick.textContent = 'Refreshing now…';
+        if (pollTimer) clearTimeout(pollTimer);
+        countdown = 0;
+        runMarketCycle();
+      });
 
       const COIN_ENDPOINT = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1&sparkline=false&price_change_percentage=24h';
 
