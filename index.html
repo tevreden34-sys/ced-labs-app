@@ -76,7 +76,8 @@ box.appendChild(el); shown++;
 }
 
 function setMap(lat,lon){
-$('map').src=`https://www.openstreetmap.org/export/embed.html?bbox=${lon-0.2}%2C${lat-0.2}%2C${lon+0.2}%2C${lat+0.2}&layer=mapnik&marker=${lat}%2C${lon}`;
+const d = 0.03; // tighter city zoom
+$('map').src=`https://www.openstreetmap.org/export/embed.html?bbox=${lon-d}%2C${lat-d}%2C${lon+d}%2C${lat+d}&layer=mapnik&marker=${lat}%2C${lon}`;
 }
 
 async function load(){
