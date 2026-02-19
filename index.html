@@ -24,8 +24,7 @@
     select,button,input[type=range]{background:#111a30;color:var(--text);border:1px solid #2d3d61;border-radius:10px;padding:8px 10px}
     button{cursor:pointer}
     .danger{background:#3a0f1a;border-color:#7a2137;color:#ffdce5}
-    .log{max-height:160px;overflow:auto;font-size:12px;color:#c9d7f4;background:#0b1326;border:1px solid #1f2f50;border-radius:10px;padding:8px;line-height:1.45}
-    .tiny{font-size:12px;color:var(--muted)}
+        .tiny{font-size:12px;color:var(--muted)}
     .split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .bookCol h4{margin:0 0 8px;font-size:13px;color:#b8c9ea}
     .bookTable{width:100%;border-collapse:collapse;font-size:10px}
@@ -100,8 +99,6 @@
             <button id="panic" class="danger">Panic Sell</button>
             <button id="reset">Reset</button>
           </div>
-          <div class="tiny" style="margin-bottom:8px">Logs include entry reason, -1R SL, TP1 at +1.5R (85% close), then SL moved to breakeven.</div>
-          <div class="log" id="log"></div>
           <div class="tiny" style="margin:10px 0 6px">Performance Chart</div>
           <canvas id="equityChart" height="140"></canvas>
         </div>
@@ -151,7 +148,7 @@
   });
 
   function fmt(v){ return '$'+Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
-  function log(msg){ $('log').innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}<br>` + $('log').innerHTML; }
+  function log(msg){ /* log panel removed */ }
   function ema(arr, p){ const k=2/(p+1); let v=arr[0]; for(let i=1;i<arr.length;i++) v=arr[i]*k+v*(1-k); return v; }
   function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
 
