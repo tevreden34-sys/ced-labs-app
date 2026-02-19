@@ -31,9 +31,11 @@
     .bookTable td:last-child{text-align:right}
     .ask td{color:#ff9bae}.bid td{color:#8effc8}
     .tradeWrap{margin-top:10px}
-    .tradeTable{width:100%;border-collapse:collapse;font-size:11px}
-    .tradeTable th,.tradeTable td{padding:5px 6px;border-bottom:1px solid #1c2a45;text-align:left}
+    .tradeScroller{width:100%;overflow-x:auto}
+    .tradeTable{width:100%;min-width:860px;table-layout:fixed;border-collapse:collapse;font-size:11px}
+    .tradeTable th,.tradeTable td{padding:5px 6px;border-bottom:1px solid #1c2a45;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .tradeTable th{color:#9fb0d6;font-weight:600}
+    .tradeTable th:nth-child(1){width:90px}.tradeTable th:nth-child(2){width:70px}.tradeTable th:nth-child(3){width:70px}.tradeTable th:nth-child(4){width:95px}.tradeTable th:nth-child(5){width:90px}.tradeTable th:nth-child(6){width:95px}.tradeTable th:nth-child(7){width:auto}
     .hlcrop{width:100%;height:320px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative}
     .hlframe{width:100%;height:760px;border:0;transform:translateY(-180px);pointer-events:none}
     @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
@@ -70,10 +72,10 @@
             </div>
                     <div class="tradeWrap">
             <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Trade Book</h4>
-            <table class="tradeTable">
+            <div class="tradeScroller"><table class="tradeTable">
               <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Price</th><th>Qty</th><th>PnL</th><th>Why</th></tr></thead>
               <tbody id="tradeBook"></tbody>
-            </table>
+            </table></div>
           </div>
 </div>
         </div>
