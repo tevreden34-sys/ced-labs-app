@@ -92,11 +92,7 @@
               <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>PnL</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>uPnL</th></tr></thead>
               <tbody id="tradeBook"><tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
             </table></div>
-          <div class="tiny" style="margin:8px 0 4px">Trade Notes (Reason Only)</div>
-          <div class="tradeScroller" style="max-height:180px"><table class="tradeTable">
-            <thead><tr><th>#</th><th>Reason</th></tr></thead>
-            <tbody id="tradeNotesBody"><tr><td colspan="2" class="tiny">No trade notes yet.</td></tr></tbody>
-          </table></div>
+          
           </div>
         </div>
       </article>
@@ -161,25 +157,10 @@
   function ema(arr, p){ const k=2/(p+1); let v=arr[0]; for(let i=1;i<arr.length;i++) v=arr[i]*k+v*(1-k); return v; }
   function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
 
-  function humanReason(r){
-    const raw = (r.reason || '').toLowerCase();
-    if(raw.includes('trend flip bullish')) return 'Trend turned bullish, so it switched to long.';
-    if(raw.includes('trend flip bearish')) return 'Trend turned bearish, so it switched to short.';
-    if(raw.includes('stop loss hit')) return 'Price hit the risk limit (-1R), so it closed to protect capital.';
-    if(raw.includes('breakeven stop')) return 'After partial profit, price came back to entry, so it exited flat.';
-    if(raw.includes('take 85% at 1.5r') || r.type==='TP1') return 'Target reached: took most profit and kept a small runner.';
-    if(raw.includes('panic sell')) return 'Manual panic exit was triggered.';
-    if(raw.includes('stop pressed')) return 'Bot stop was pressed, so all open positions were closed.';
-    if(r.type==='OPEN') return 'Entry matched momentum + trend rules, so a position was opened.';
-    if(r.type==='CLOSE') return 'Exit condition was met, so the trade was closed.';
-    return 'Rule-based action from current market setup.';
-  }
-
-function renderTradeBook(){
+  function renderTradeBook(){
     const tb = $('tradeBook'); if(!tb) return;
     if(!tradeHistory.length){
       tb.innerHTML = '<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
-      const notesBody = $('tradeNotesBody'); if(notesBody) notesBody.innerHTML = '<tr><td colspan="2" class="tiny">No trade notes yet.</td></tr>'; 
       return;
     }
 
@@ -207,10 +188,6 @@ function renderTradeBook(){
       return `<tr class="${rowCls}"><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td class="${x.pnlCls} keepPnl">${x.pnlText}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${pxCell}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.upnlCls}">${x.upnlText}</td></tr>`;
     }).join('');
 
-    const notesBody = $('tradeNotesBody');
-    if(notesBody){
-      notesBody.innerHTML = rows.map(x=>`<tr><td>${x.i+1}</td><td>${humanReason(x.r)}</td></tr>`).join('') || '<tr><td colspan="2" class="tiny">No trade notes yet.</td></tr>';
-    }
   }
 
 
@@ -555,7 +532,7 @@ function renderTradeBook(){
       longCount: 0,
       shortCount: 0
     };
-    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('tradeNotesBody')) $('tradeNotesBody').innerHTML='<tr><td colspan="2" class="tiny">No trade notes yet.</td></tr>';
+    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('upnl').textContent='$0.00'; $('marginUsed').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
     renderBalance(state.balance); updateFocusKpis(); updateBiasChart();
