@@ -29,7 +29,7 @@
 <body>
   <main class="wrap">
     <h1>Cedric Trade Hub</h1>
-    <p class="sub">Freqtrade-style paper bot · 10,000 USDT balance · leverage up to 50x · auto run window: 15 minutes</p>
+    <p class="sub">Paper bot · 10,000 USDT start · leverage up to 50x · TP1 at 2.5R (close 70%) · SL at -1R then breakeven</p>
 
     <div class="kpis">
       <div class="kpi"><div class="l">Symbol</div><div class="v" id="sym">BTCUSDT</div></div>
@@ -57,7 +57,7 @@
             <button id="stop">Stop</button>
             <button id="reset">Reset</button>
           </div>
-          <div class="tiny" style="margin-bottom:8px">Every opened/closed position is logged with reason (EMA crossover + RSI + leverage + size).</div>
+          <div class="tiny" style="margin-bottom:8px">Logs include entry reason, -1R SL, TP1 at +2.5R (70% close), then SL moved to breakeven for runner.</div>
           <div class="log" id="log"></div>
         </div>
       </article>
@@ -68,12 +68,16 @@
 (() => {
   const $ = id => document.getElementById(id);
   const RUN_MS = 15 * 60 * 1000;
+  const RISK_PCT = 0.01;   // -1R = 1% from entry
+  const TP1_R = 2.5;       // take profit at +2.5R
+  const TP1_CLOSE = 0.70;  // close 70% at TP1
+
   let running = false;
   let startAt = 0;
   let tickTimer = null;
   let countdownTimer = null;
 
-  let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'] };
+  let state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false };
 
   const chart = new Chart($('equityChart').getContext('2d'), {
     type: 'line',
@@ -92,29 +96,38 @@
     const m = Math.floor(left/60000).toString().padStart(2,'0');
     const s = Math.floor((left%60000)/1000).toString().padStart(2,'0');
     $('timeLeft').textContent = `${m}:${s}`;
-    if(left <= 0){
-      stopBot('15m run completed');
-    }
+    if(left <= 0) stopBot('15m run completed');
   }
 
   function calcEquity(px){
     if(!state.side) return state.balance;
-    const lev = Number($('lev').value);
     const pnl = state.side === 'LONG' ? (px - state.entry) * state.qty : (state.entry - px) * state.qty;
     return state.balance + pnl;
   }
 
   function openPosition(side, px, reason){
     const lev = Number($('lev').value);
-    const margin = state.balance * 0.1; // 10% allocation per trade
+    const margin = state.balance * 0.10;
     const notional = margin * lev;
     const qty = notional / px;
+
     state.marginUsed = margin;
     state.qty = qty;
     state.entry = px;
     state.side = side;
     state.trades++;
-    log(`OPEN ${side} ${$('symbol').value} @ ${px.toFixed(2)} | lev ${lev}x | qty ${qty.toFixed(4)} | margin ${fmt(margin)} | reason: ${reason}`);
+    state.tp1Hit = false;
+
+    const oneR = px * RISK_PCT;
+    if(side === 'LONG'){
+      state.sl = px - oneR;         // -1R
+      state.tp1 = px + (oneR * TP1_R); // +2.5R
+    } else {
+      state.sl = px + oneR;
+      state.tp1 = px - (oneR * TP1_R);
+    }
+
+    log(`OPEN ${side} ${$('symbol').value} @ ${px.toFixed(2)} | lev ${lev}x | qty ${qty.toFixed(4)} | margin ${fmt(margin)} | SL ${state.sl.toFixed(2)} (-1R) | TP1 ${state.tp1.toFixed(2)} (+2.5R) | reason: ${reason}`);
   }
 
   function closePosition(px, reason){
@@ -122,7 +135,35 @@
     const pnl = state.side === 'LONG' ? (px - state.entry) * state.qty : (state.entry - px) * state.qty;
     state.balance += pnl;
     log(`CLOSE ${state.side} @ ${px.toFixed(2)} | pnl ${pnl>=0?'+':''}${fmt(pnl)} | new balance ${fmt(state.balance)} | reason: ${reason}`);
-    state.qty = 0; state.entry = 0; state.side = null; state.marginUsed = 0; state.trades++;
+    state.qty = 0; state.entry = 0; state.side = null; state.marginUsed = 0; state.trades++; state.sl = 0; state.tp1 = 0; state.tp1Hit = false;
+  }
+
+  function takePartial(px){
+    if(!state.side || state.tp1Hit) return;
+    const closeQty = state.qty * TP1_CLOSE;
+    const pnl = state.side === 'LONG' ? (px - state.entry) * closeQty : (state.entry - px) * closeQty;
+    state.balance += pnl;
+    state.qty -= closeQty;
+    state.tp1Hit = true;
+    state.sl = state.entry; // move SL to breakeven
+    log(`TP1 HIT @ ${px.toFixed(2)} | closed 70% (${closeQty.toFixed(4)}) | realized ${pnl>=0?'+':''}${fmt(pnl)} | moved SL to breakeven @ ${state.sl.toFixed(2)}`);
+  }
+
+  function managePosition(px){
+    if(!state.side) return;
+
+    // TP1 first
+    if(!state.tp1Hit){
+      if((state.side === 'LONG' && px >= state.tp1) || (state.side === 'SHORT' && px <= state.tp1)){
+        takePartial(px);
+      }
+    }
+
+    // Stop loss / breakeven stop
+    if((state.side === 'LONG' && px <= state.sl) || (state.side === 'SHORT' && px >= state.sl)){
+      const reason = state.tp1Hit ? 'breakeven stop after TP1' : '-1R stop loss hit';
+      closePosition(px, reason);
+    }
   }
 
   async function tick(){
@@ -138,10 +179,11 @@
       const e50 = ema(close.slice(-120),50);
       const rv = rsi(close,14);
 
+      managePosition(px);
+
       let sig='HOLD';
       if(e20>e50 && rv>53) sig='BUY';
       if(e20<e50 && rv<47) sig='SELL';
-
       const reason = `EMA20 ${e20.toFixed(2)} vs EMA50 ${e50.toFixed(2)}, RSI ${rv.toFixed(1)}`;
 
       if(sig==='BUY'){
@@ -191,9 +233,6 @@
     clearTimeout(tickTimer);
     clearInterval(countdownTimer);
     updateTimeLeft();
-    if(state.side){
-      log(`Position left open (${state.side}) — close manually with Reset if needed.`);
-    }
     log(`Bot ${msg}`);
   }
 
@@ -202,7 +241,7 @@
   $('stop').onclick = () => stopBot('stopped manually');
   $('reset').onclick = () => {
     stopBot('reset');
-    state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'] };
+    state = { balance: 10000, marginUsed: 0, qty: 0, entry: 0, side: null, trades: 0, equity: [10000], labels: ['start'], sl: 0, tp1: 0, tp1Hit: false };
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
     log('State reset to initial 10,000 USDT balance.');
@@ -210,7 +249,7 @@
 
   $('symbol').onchange = ()=> log('Symbol -> '+$('symbol').value);
   $('interval').onchange = ()=> log('Interval -> '+$('interval').value);
-  log('Paper mode active (no real orders). Click Start 15m to run.');
+  log('Paper mode active. TP logic: +2.5R take 70%, then SL moved to breakeven.');
 })();
 </script>
 </body>
