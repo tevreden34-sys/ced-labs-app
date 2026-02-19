@@ -14,7 +14,7 @@
     .card{background:linear-gradient(180deg,var(--card),#0f1627);border:1px solid var(--line);border-radius:16px;overflow:hidden}
     .head{padding:12px 14px;border-bottom:1px solid #1f2b45;display:flex;justify-content:space-between;align-items:center}
     .body{padding:12px 14px}
-    .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+    .kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin-bottom:14px}
     .kpi{background:#0f172b;border:1px solid #22314f;border-radius:12px;padding:10px}
     .kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-weight:700;font-size:18px;margin-top:4px}
     .up{color:var(--green)} .down{color:var(--red)} .warn{color:var(--yellow)}
@@ -33,11 +33,11 @@
     .ask td{color:#ff9bae}.bid td{color:#8effc8}
     .tradeWrap{margin-top:10px}
     .tradeScroller{width:100%;max-height:280px;overflow:auto;border:1px solid #1c2a45;border-radius:10px}
-    .tradeTable{width:100%;min-width:860px;table-layout:fixed;border-collapse:collapse;font-size:11px}
+    .tradeTable{width:100%;min-width:980px;table-layout:fixed;border-collapse:collapse;font-size:11px}
     .tradeTable th,.tradeTable td{padding:6px 7px;border-bottom:1px solid #1c2a45;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .tradeTable th{color:#9fb0d6;font-weight:600}
     .tradeTable thead th{position:sticky;top:0;background:#0f172b;z-index:1}
-    .tradeTable th:nth-child(1){width:90px}.tradeTable th:nth-child(2){width:70px}.tradeTable th:nth-child(3){width:70px}.tradeTable th:nth-child(4){width:95px}.tradeTable th:nth-child(5){width:90px}.tradeTable th:nth-child(6){width:95px}.tradeTable th:nth-child(7){width:auto}
+    .tradeTable th:nth-child(1){width:90px}.tradeTable th:nth-child(2){width:70px}.tradeTable th:nth-child(3){width:90px}.tradeTable th:nth-child(4){width:95px}.tradeTable th:nth-child(5){width:90px}.tradeTable th:nth-child(6){width:110px}.tradeTable th:nth-child(7){width:95px}.tradeTable th:nth-child(8){width:auto}
     .hlcrop{width:100%;height:520px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative;margin-bottom:10px}
     .hlframe{width:100%;height:900px;border:0;transform:translateY(-80px);pointer-events:auto}
         @media(max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.split{grid-template-columns:1fr}}
@@ -55,6 +55,7 @@
       <div class="kpi"><div class="l">Signal</div><div class="v" id="signal">-</div></div>
       <div class="kpi"><div class="l">Balance</div><div class="v" id="balance">$10,000.00</div></div>
       <div class="kpi"><div class="l">Paper PnL</div><div class="v" id="pnl">$0.00</div></div>
+      <div class="kpi"><div class="l">Unrealized PnL</div><div class="v" id="upnl">$0.00</div></div>
       <div class="kpi"><div class="l">Time left</div><div class="v" id="timeLeft">15:00</div></div>
     </div>
 
@@ -94,8 +95,8 @@
           <div class="tradeWrap" style="margin-top:12px">
             <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Trade Book</h4>
             <div class="tradeScroller"><table class="tradeTable">
-              <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Price</th><th>Qty</th><th>PnL</th><th>Why</th></tr></thead>
-              <tbody id="tradeBook"><tr><td colspan="7" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
+              <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Price</th><th>Qty</th><th>Size $</th><th>PnL</th><th>Why</th></tr></thead>
+              <tbody id="tradeBook"><tr><td colspan="8" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
             </table></div>
           </div>
         </div>
@@ -144,10 +145,25 @@
   function rsi(arr, p=14){ if(arr.length<p+1) return 50; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>=0) g+=d; else l-=d; } if(l===0) return 100; const rs=(g/p)/(l/p); return 100-(100/(1+rs)); }
 
   function addTrade(type, symbol, side, price, qty, pnl, reason){
-    tradeHistory.unshift({ t:new Date().toLocaleTimeString(), type, symbol, side:side||'-', price:Number(price||0), qty:Number(qty||0), pnl:Number(pnl||0), reason:reason||'-' });
+    const _price = Number(price||0), _qty = Number(qty||0), _pnl = Number(pnl||0);
+    tradeHistory.unshift({
+      t:new Date().toLocaleTimeString(),
+      type,
+      symbol,
+      side:side||'-',
+      price:_price,
+      qty:_qty,
+      usdSize:_price*_qty,
+      pnl:_pnl,
+      reason:reason||'-'
+    });
     if(tradeHistory.length>40) tradeHistory = tradeHistory.slice(0,40);
     const tb = $('tradeBook'); if(!tb) return;
-    tb.innerHTML = tradeHistory.map(r=>`<tr><td>${r.t}</td><td>${r.type}</td><td>${r.side}/${r.symbol}</td><td>${r.price? r.price.toFixed(2):'-'}</td><td>${r.qty? r.qty.toFixed(4):'-'}</td><td class="${r.pnl>=0?'up':'down'}">${r.pnl?((r.pnl>=0?'+':'')+fmt(r.pnl)):'-'}</td><td>${r.reason}</td></tr>`).join('');
+    tb.innerHTML = tradeHistory.map(r=>{
+      const pnlText = (r.type==='OPEN' && r.pnl===0) ? '-' : `${r.pnl>=0?'+':''}${fmt(r.pnl)}`;
+      const pnlCls = r.pnl>=0 ? 'up' : 'down';
+      return `<tr><td>${r.t}</td><td>${r.type}</td><td>${r.side}/${r.symbol}</td><td>${r.price? r.price.toFixed(2):'-'}</td><td>${r.qty? r.qty.toFixed(4):'-'}</td><td>${r.usdSize?fmt(r.usdSize):'-'}</td><td class="${pnlCls}">${pnlText}</td><td>${r.reason}</td></tr>`;
+    }).join('');
   }
 
   function renderBalance(){ $('balance').textContent = fmt(state.balance); }
@@ -228,6 +244,18 @@
     }
     return eq;
   }
+
+  function calcUnrealizedPnl(){
+    let u = 0;
+    for(const sym of TRADE_SYMBOLS){
+      const p = state.positions[sym];
+      if(!p) continue;
+      const px = state.priceBySym[sym] || p.entry;
+      u += p.side==='LONG' ? (px-p.entry)*p.qty : (p.entry-px)*p.qty;
+    }
+    return u;
+  }
+
 
   function openPosition(sym, side, px, reason, lev, allocPct){
     if(state.positions[sym]) return;
@@ -373,8 +401,11 @@
 
       updateFocusKpis();
       const pnl = eq - 10000;
+      const upnl = calcUnrealizedPnl();
       $('pnl').textContent = (pnl>=0?'+':'') + fmt(pnl);
       $('pnl').className = 'v '+(pnl>=0?'up':'down');
+      $('upnl').textContent = (upnl>=0?'+':'') + fmt(upnl);
+      $('upnl').className = 'v '+(upnl>=0?'up':'down');
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
     }catch(e){
       // silent retry
@@ -428,9 +459,9 @@
       priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
       chartTf: '5m'
     };
-    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="7" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
+    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="8" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
-    $('pnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
+    $('pnl').textContent='$0.00'; $('upnl').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
     renderBalance(); updateFocusKpis();
     log('State reset to initial 10,000 USDT balance.');
   };
