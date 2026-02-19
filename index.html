@@ -36,6 +36,9 @@
     .tradeTable{width:100%;min-width:1240px;table-layout:fixed;border-collapse:collapse;font-size:11px}
     .tradeTable th,.tradeTable td{padding:6px 7px;border-bottom:1px solid #1c2a45;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .tradeTable th{color:#9fb0d6;font-weight:600}
+    .closedRow td{color:#7f889d !important}
+    .closedRow td.keepPnl.up{color:#19c37d !important}
+    .closedRow td.keepPnl.down{color:#ff5d7a !important}
     .tradeTable thead th{position:sticky;top:0;background:#0f172b;z-index:1}
     .tradeTable th:nth-child(1){width:46px}.tradeTable th:nth-child(2){width:84px}.tradeTable th:nth-child(3){width:62px}.tradeTable th:nth-child(4){width:88px}.tradeTable th:nth-child(5){width:62px}.tradeTable th:nth-child(6){width:56px}.tradeTable th:nth-child(7){width:88px}.tradeTable th:nth-child(8){width:84px}.tradeTable th:nth-child(9){width:104px}.tradeTable th:nth-child(10){width:84px}.tradeTable th:nth-child(11){width:auto}
     .hlcrop{width:100%;height:520px;border:1px solid #1f2f50;border-radius:10px;background:#0b1326;overflow:hidden;position:relative;margin-bottom:10px}
@@ -169,7 +172,7 @@ function renderTradeBook(){
 
     const rows = tradeHistory.map((r, i)=>{
       const currentPx = state.priceBySym[r.symbol] || r.price || 0;
-      const isOpen = r.type === 'OPEN';
+      const isOpen = r.status !== 'CLOSED' && r.type === 'OPEN';
       const rowPnl = isOpen
         ? ((r.side==='LONG' ? (currentPx - r.price) : (r.price - currentPx)) * (r.qty || 0))
         : (r.pnl || 0);
@@ -182,7 +185,11 @@ function renderTradeBook(){
       return {i, r, pnlCls, pnlText, qtyText, usdText, sideCls};
     });
 
-    tb.innerHTML = rows.map(x=>`<tr><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${x.r.price? x.r.price.toFixed(2):'-'}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.pnlCls}">${x.pnlText}</td></tr>`).join('');
+    tb.innerHTML = rows.map(x=>{
+      const rowCls = x.r.status==='CLOSED' ? 'closedRow' : '';
+      const pxCell = (x.r.status==='CLOSED' && x.r.closePrice) ? x.r.closePrice.toFixed(2) : (x.r.price ? x.r.price.toFixed(2) : '-');
+      return `<tr class="${rowCls}"><td>${x.i+1}</td><td>${x.r.t}</td><td>${x.r.type}</td><td>${x.r.symbol}</td><td class="${x.sideCls}">${x.r.side}</td><td>${x.r.lev?`${x.r.lev}x`:'-'}</td><td>${pxCell}</td><td class="${x.pnlCls}">${x.qtyText}</td><td class="${x.pnlCls}">${x.usdText}</td><td class="${x.pnlCls} keepPnl">${x.pnlText}</td></tr>`;
+    }).join('');
 
     const notesBody = $('tradeNotesBody');
     if(notesBody){
@@ -193,21 +200,56 @@ function renderTradeBook(){
 
   function addTrade(type, symbol, side, price, qty, pnl, reason, lev){
     const _price = Number(price||0), _qty = Number(qty||0), _pnl = Number(pnl||0);
-    tradeHistory.unshift({
-      t:new Date().toLocaleTimeString(),
-      type,
-      symbol,
-      side:side||'-',
-      price:_price,
-      qty:_qty,
-      usdSize:_price*_qty,
-      pnl:_pnl,
-      reason:reason||'-',
-      lev: Number(lev||0)
-    });
+
+    if(type === 'CLOSE'){
+      const idx = tradeHistory.findIndex(r => r.status==='OPEN' && r.symbol===symbol);
+      if(idx >= 0){
+        tradeHistory[idx] = {
+          ...tradeHistory[idx],
+          tClose: new Date().toLocaleTimeString(),
+          type: 'CLOSED',
+          status: 'CLOSED',
+          closePrice: _price,
+          pnl: _pnl,
+          reason: reason || tradeHistory[idx].reason || '-',
+        };
+      } else {
+        tradeHistory.unshift({
+          t:new Date().toLocaleTimeString(),
+          tClose:new Date().toLocaleTimeString(),
+          type:'CLOSED',
+          status:'CLOSED',
+          symbol,
+          side:side||'-',
+          price:_price,
+          closePrice:_price,
+          qty:_qty,
+          usdSize:_price*_qty,
+          pnl:_pnl,
+          reason:reason||'-',
+          lev:Number(lev||0)
+        });
+      }
+    } else {
+      tradeHistory.unshift({
+        t:new Date().toLocaleTimeString(),
+        type,
+        status:'OPEN',
+        symbol,
+        side:side||'-',
+        price:_price,
+        qty:_qty,
+        usdSize:_price*_qty,
+        pnl:_pnl,
+        reason:reason||'-',
+        lev: Number(lev||0)
+      });
+    }
+
     if(tradeHistory.length>40) tradeHistory = tradeHistory.slice(0,40);
     renderTradeBook();
   }
+
 
   function renderBalance(v){ $('balance').textContent = fmt(v ?? state.balance); }
 
