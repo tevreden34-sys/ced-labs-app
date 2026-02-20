@@ -63,7 +63,21 @@
         <div class="body">
                     <div class="hlcrop"><iframe id="hlChart" class="hlframe" src="https://app.hyperliquid.xyz/trade/BTC" loading="lazy" referrerpolicy="no-referrer"></iframe></div>
           <div class="tiny" style="margin-top:8px">Live chart area only.</div>
+          <div class="tradeWrap" style="margin-top:10px">
+            <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Closed Trades</h4>
+            <div class="tradeScroller" style="max-height:200px"><table class="tradeTable">
+              <thead><tr><th>#</th><th>Pair</th><th>Trade P/L</th><th>Start Bal</th><th>End Bal</th><th>Result</th></tr></thead>
+              <tbody id="balanceLedger"><tr><td colspan="6" class="tiny">No closed trades yet.</td></tr></tbody>
+            </table></div>
+          </div>
 
+          <div class="tradeWrap" style="margin-top:10px">
+            <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Session Stats</h4>
+            <div class="tradeScroller" style="max-height:160px"><table class="tradeTable" style="min-width:700px">
+              <thead><tr><th>Closed</th><th>Winrate</th><th>Avg Win</th><th>Avg Loss</th><th>Profit Factor</th><th>Max Drawdown</th></tr></thead>
+              <tbody id="sessionStats"><tr><td colspan="6" class="tiny">No stats yet.</td></tr></tbody>
+            </table></div>
+          </div>
         </div>
       </article>
 
@@ -87,13 +101,7 @@
               <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Pair</th><th>Side</th><th>PnL</th><th>Lev</th><th>Price</th><th>Qty</th><th>Size $</th><th>uPnL</th></tr></thead>
               <tbody id="tradeBook"><tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr></tbody>
             </table></div>
-            <div class="tradeWrap" style="margin-top:10px">
-              <h4 style="margin:0 0 6px;font-size:13px;color:#b8c9ea">Balance Ledger</h4>
-              <div class="tradeScroller" style="max-height:180px"><table class="tradeTable">
-                <thead><tr><th>#</th><th>Pair</th><th>Trade P/L</th><th>Start Bal</th><th>End Bal</th><th>Result</th></tr></thead>
-                <tbody id="balanceLedger"><tr><td colspan="6" class="tiny">No closed trades yet.</td></tr></tbody>
-              </table></div>
-            </div>
+
           </div>
         </div>
       </article>
@@ -155,14 +163,53 @@
     }).join('');
   }
 
+  function renderSessionStats(){
+    const el = $('sessionStats');
+    if(!el) return;
+    const closed = tradeHistory.filter(r => r.status==='CLOSED');
+    if(!closed.length){
+      el.innerHTML = '<tr><td colspan="6" class="tiny">No stats yet.</td></tr>';
+      return;
+    }
+    const pnls = closed.map(r => Number(r.pnl || 0));
+    const wins = pnls.filter(v => v > 0);
+    const losses = pnls.filter(v => v < 0);
+    const winrate = (wins.length / pnls.length) * 100;
+    const avgWin = wins.length ? wins.reduce((a,b)=>a+b,0)/wins.length : 0;
+    const avgLoss = losses.length ? losses.reduce((a,b)=>a+b,0)/losses.length : 0;
+    const profitFactor = Math.abs(losses.reduce((a,b)=>a+b,0)) > 0 ? (wins.reduce((a,b)=>a+b,0) / Math.abs(losses.reduce((a,b)=>a+b,0))) : (wins.length ? 99 : 0);
+
+    let peak = state.equity[0] || 10000;
+    let maxDD = 0;
+    for(const v of state.equity){
+      if(v > peak) peak = v;
+      const dd = ((peak - v) / peak) * 100;
+      if(dd > maxDD) maxDD = dd;
+    }
+
+    el.innerHTML = `<tr>
+      <td>${closed.length}</td>
+      <td>${winrate.toFixed(1)}%</td>
+      <td class="up">${fmt(avgWin)}</td>
+      <td class="down">${fmt(avgLoss)}</td>
+      <td>${profitFactor.toFixed(2)}</td>
+      <td class="${maxDD>5?'down':'warn'}">${maxDD.toFixed(2)}%</td>
+    </tr>`;
+  }
+
 function renderTradeBook(){
     const tb = $('tradeBook'); if(!tb) return;
     if(!tradeHistory.length){
       tb.innerHTML = '<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>';
       return;
     }
+    if(!tradeHistory.some(r => r.status !== 'CLOSED')){
+      tb.innerHTML = '<tr><td colspan="11" class="tiny">No open trades.</td></tr>';
+      return;
+    }
 
-    const rows = tradeHistory.map((r, i)=>{
+    const openRowsSrc = tradeHistory.filter(r => r.status !== 'CLOSED');
+    const rows = openRowsSrc.map((r, i)=>{
       const currentPx = state.priceBySym[r.symbol] || r.price || 0;
       const isOpen = r.status !== 'CLOSED' && r.type === 'OPEN';
       const unrealized = isOpen
@@ -243,6 +290,7 @@ function renderTradeBook(){
     if(tradeHistory.length>40) tradeHistory = tradeHistory.slice(0,40);
     renderTradeBook();
     renderBalanceLedger();
+    renderSessionStats();
   }
 
 
@@ -401,10 +449,12 @@ function renderTradeBook(){
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
       renderTradeBook();
       renderBalanceLedger();
+      renderSessionStats();
     }catch(e){
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
       renderTradeBook();
       renderBalanceLedger();
+      renderSessionStats();
       updateFocusKpis();
     }
   }
@@ -476,6 +526,7 @@ function renderTradeBook(){
       $('updated').textContent = 'last tick: '+new Date().toLocaleTimeString();
       renderTradeBook();
       renderBalanceLedger();
+      renderSessionStats();
     }catch(e){
       // silent retry
     }
@@ -527,10 +578,10 @@ function renderTradeBook(){
       priceBySym: Object.fromEntries(TRADE_SYMBOLS.map(s=>[s,0])),
       chartTf: '5m'
     };
-    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('balanceLedger')) $('balanceLedger').innerHTML='<tr><td colspan="6" class="tiny">No closed trades yet.</td></tr>';
+    tradeHistory=[]; if($('tradeBook')) $('tradeBook').innerHTML='<tr><td colspan="11" class="tiny">No trades yet. Start bot to generate orders.</td></tr>'; if($('balanceLedger')) $('balanceLedger').innerHTML='<tr><td colspan="6" class="tiny">No closed trades yet.</td></tr>'; if($('sessionStats')) $('sessionStats').innerHTML='<tr><td colspan="6" class="tiny">No stats yet.</td></tr>';
     chart.data.labels=state.labels; chart.data.datasets[0].data=state.equity; chart.update();
     $('upnl').textContent='$0.00'; $('marginUsed').textContent='$0.00'; $('signal').textContent='-'; $('price').textContent='-';
-    renderBalance(state.balance); updateFocusKpis();
+    renderBalance(state.balance); updateFocusKpis(); renderSessionStats();
     log('State reset to initial 10,000 USDT balance.');
   };
 
